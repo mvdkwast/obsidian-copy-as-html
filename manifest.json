@@ -1,7 +1,7 @@
 {
 	"id": "copy-as-html",
 	"name": "Copy as HTML",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"minAppVersion": "1.0.0",
 	"description": "Copy the current document as HTML so it can be pasted into HTML aware applications like gmail.",
 	"author": "mvdkwast",
