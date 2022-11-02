@@ -1,4 +1,4 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin} from 'obsidian';
+import {App, Editor, FileSystemAdapter, MarkdownView, Modal, Notice, Plugin, TFile} from 'obsidian';
 
 /*
  * Generic lib functions
@@ -27,11 +27,25 @@ async function delay(milliseconds: number): Promise<void> {
 	return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
+
+/*
+ * Plugin code
+ */
+
 /**
  * Modify document preview HTML to embed pictures and do some cleanup for pasting.
  */
 class HTMLConverter {
 	private modal: CopyingToHtmlModal;
+
+	// if true, render svg to bitmap
+	private optionConvertSvgToBitmap: boolean = true;
+
+	// only those which are different from image/${extension}
+	private readonly mimeMap = new Map([
+		['svg', 'image/svg+xml'],
+		['jpg', 'image/jpeg'],
+	]);
 
 	constructor(private view: MarkdownView, private app: App) {
 	}
@@ -66,11 +80,12 @@ class HTMLConverter {
 		const topNode: HTMLElement = this.view.contentEl.querySelector('.markdown-reading-view .markdown-preview-section');
 
 		// wait maximum 10s (at 20 tests per second) for the preview to be loaded
-		const MAX_TRIALS = 20 * 10;
-		for (let trial = 0; trial < MAX_TRIALS; ++trial) {
+		const LOADING_POLL_DELAY = 50; // ms
+		const MAX_ATTEMPTS = 10 * (1000 / LOADING_POLL_DELAY);
+		for (let trial = 0; trial < MAX_ATTEMPTS; ++trial) {
 			const pusher = topNode.querySelector('.markdown-preview-pusher');
 			if (pusher !== null) {
-				// work-around - see fixme above
+				// work-around - see function comment above
 				await delay(250);
 				// found it -> the preview is loaded
 				return topNode;
@@ -91,7 +106,7 @@ class HTMLConverter {
 		node.style.paddingBottom = '0';
 		node.style.minHeight = '0';
 
-		this.removeIndicators(node);
+		this.removeCollapseIndicators(node);
 
 		await this.embedImages(node);
 
@@ -99,7 +114,7 @@ class HTMLConverter {
 	}
 
 	/** Remove the collapse indicators from HTML, not needed (and not working) in copy */
-	private removeIndicators(node: HTMLElement) {
+	private removeCollapseIndicators(node: HTMLElement) {
 		node.querySelectorAll('.collapse-indicator')
 			.forEach(node => node.remove());
 	}
@@ -108,11 +123,18 @@ class HTMLConverter {
 	private async embedImages(node: HTMLElement): Promise<HTMLElement> {
 		const promises: Promise<void>[] = [];
 
+		// Replace all image souces
 		node.querySelectorAll('img')
 			.forEach(img => {
-				console.log('data', img.src);
-				if (img.src && !img.src.startsWith('data:')) {
-					promises.push(this.replaceImageSource(img));
+				if (img.src) {
+					if (img.src.startsWith('data:image/svg+xml') && this.optionConvertSvgToBitmap) {
+						// image is an SVG, encoded as a data uri. This is the case with Excalidraw for instance
+						// convert it to bitmap
+						promises.push(this.replaceImageSource(img));
+					} else if (!img.src.startsWith('data:')) {
+						// render bitmaps, except if already as data-uri
+						promises.push(this.replaceImageSource(img));
+					}
 				}
 			});
 
@@ -126,7 +148,36 @@ class HTMLConverter {
 
 	/** replace image src attribute with data uri */
 	private async replaceImageSource(image: HTMLImageElement): Promise<void> {
-		image.src = await this.imageToDataUri(image.src);
+		const vaultPath = (this.app.vault.getRoot().vault.adapter as FileSystemAdapter).getBasePath()
+			.replace(/\\/g, '/');
+
+		const vaultUriPrefix = `app://local/${vaultPath}`;
+
+		if (image.src.startsWith(vaultUriPrefix)) {
+			// Transform uri to Obsidian relative path
+			let path = image.src.substring(vaultUriPrefix.length + 1)
+				.replace(/[?#].*/, '');
+			path = decodeURI(path);
+
+			// console.log(`attempt direct fetch from vault ${path}`);
+
+			const mimeType = this.guessMimeType(path);
+			const data = await this.readFromVault(path, mimeType);
+
+			// Leave choice here : return SVG or render as bitmap
+			if (this.isSvg(mimeType) && this.optionConvertSvgToBitmap) {
+				// render svg to bitmap for compatibility w/ for instance gmail
+				image.src = await this.imageToDataUri(data);
+			} else {
+				// file content as base64 data uri (including svg)
+				image.src = data;
+			}
+		} else {
+			// Attempt to render uri to canvas. This is not an uri that points to the vault. Not needed for public
+			// urls, but we may have un uri that points to our local machine or network, that will not be accessible
+			// wherever we intend to paste the document.
+			image.src = await this.imageToDataUri(image.src);
+		}
 	}
 
 	/**
@@ -136,25 +187,26 @@ class HTMLConverter {
 		const canvas = document.createElement('canvas');
 		const ctx = canvas.getContext('2d');
 
-		const base_image = new Image();
-		base_image.setAttribute('crossOrigin', 'anonymous');
+		const image = new Image();
+		image.setAttribute('crossOrigin', 'anonymous');
 
 		const dataUriPromise = new Promise<string>((resolve, reject) => {
-			base_image.onload = () => {
-				// TODO: resize image
-				canvas.width = base_image.naturalWidth;
-				canvas.height = base_image.naturalHeight;
+			image.onload = () => {
+				// TODO: resize image ?
+				canvas.width = image.naturalWidth;
+				canvas.height = image.naturalHeight;
 
-				ctx!.drawImage(base_image, 0, 0);
+				ctx!.drawImage(image, 0, 0);
 
 				try {
 					const uri = canvas.toDataURL('image/png');
 					resolve(uri);
 				} catch (err) {
 					console.log(`failed ${url}`, err);
-					// if we fail, leave the original url
-					// images from plantuml.com cannot be loaded this way (tainted), but could still be accessed
-					// from outside
+					// if we fail, leave the original url.
+					// This way images that we may not load from external sources (tainted) may still be accessed
+					// (eg. plantuml)
+					// TODO: attempt fallback with fetch ?
 					resolve(url);
 				}
 
@@ -162,8 +214,43 @@ class HTMLConverter {
 			}
 		})
 
-		base_image.src = url;
+		image.src = url;
+
 		return dataUriPromise;
+	}
+
+	/**
+	 * Get binary data as b64 from a file in the vault
+	 */
+	private async readFromVault(path: string, mimeType: string) : Promise<string> {
+		const tfile = this.app.vault.getAbstractFileByPath(path) as TFile;
+
+		const data = await this.app.vault.readBinary(tfile);
+
+		const blob = new Blob([data], {type: mimeType});
+		const reader = new FileReader();
+		const dataUriPromise = new Promise<string>((resolve, reject) => {
+			reader.onload = (event) => {
+				const base64: string = reader.result as string;
+				resolve(base64);
+			};
+			reader.onerror = reject;
+			reader.readAsDataURL(blob);
+		});
+
+		return await dataUriPromise;
+	}
+
+	/** Guess an image's mime-type based on its extension */
+	private guessMimeType(path: string): string {
+		const extensionMatch = /\.(.*?)$/.exec(path);
+		const extension = extensionMatch ? extensionMatch[1].toLowerCase() : 'png';
+		const mimeType = this.mimeMap.get(extension) || `image/${extension}`;
+		return mimeType;
+	}
+
+	private isSvg(mimeType: string): boolean {
+		return mimeType === 'image/svg+xml';
 	}
 }
 
