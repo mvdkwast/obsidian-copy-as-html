@@ -1,4 +1,4 @@
-import {App, Editor, FileSystemAdapter, MarkdownRenderer, MarkdownView, Modal, Notice, Plugin, TFile} from 'obsidian';
+import {App, Editor, FileSystemAdapter, MarkdownRenderer, MarkdownView, Modal, Notice, Plugin, TFile, Workspace} from 'obsidian';
 import * as path from 'path';
 
 /*
@@ -316,8 +316,15 @@ export default class CopyAsHTMLPlugin extends Plugin {
 			id: 'copy-as-html',
 			name: 'Copy current document to clipboard',
 
-			editorCallback: async (editor: Editor, view: MarkdownView) => {
-				const copier = new DocumentRenderer(view, this.app);
+			callback: async () => {
+				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (!activeView) {
+					console.log('Nothing to copy: No active markdown view');
+					return;
+				}
+
+				console.log(`Copying "${activeView.file.path}" to clipboard...`);
+				const copier = new DocumentRenderer(activeView, this.app);
 
 				try {
 					const document = await copier.renderDocument();
@@ -340,7 +347,7 @@ export default class CopyAsHTMLPlugin extends Plugin {
 					new Notice(`copy failed: ${error}`);
 					console.error('copy failed', error);
 				}
-			}
+			},
 		});
 	}
 }
