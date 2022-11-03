@@ -14,9 +14,8 @@ Currently working with :
 - ✅ plantuml
 - ✅ diagrams
 - ✅ obsidian-tasks
-- 👷 obsidian-dataview - content may be missing. Work-around: copy twice or switch to preview mode and back.
-- 👷 Excalidraw - seems to cause the content to be duplicated in gmail, but not in
-  other editors like [RichTextEditor](https://richtexteditor.com/demos/basic_editor.aspx).
+- 👷 obsidian-dataview - for large dataview blocks the content may not be complete
+- ✅ Excalidraw - rendering as bitmap solves pasting in gmail
 
 ## Implementation
 
@@ -26,9 +25,8 @@ The plugin converts image references to data urls, so no references to the vault
 
 - Only works in edit mode.
 - Post-processors like dataview may not have post-processed the preview documents, which may cause missing data
-- The Excalidraw plugin output seems to confuse gmail, although the output looks ok.
 - Special fields (front-matter, double-colon attributes, ...) are not removed.
-- data-urls can use a lot of memory for big/many pictures
+- data-uris can use a lot of memory for big/many pictures
 
 ## TODO / wish-list
 
