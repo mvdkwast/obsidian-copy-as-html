@@ -1,4 +1,5 @@
-import {App, Editor, FileSystemAdapter, MarkdownView, Modal, Notice, Plugin, TFile} from 'obsidian';
+import {App, Editor, FileSystemAdapter, MarkdownRenderer, MarkdownView, Modal, Notice, Plugin, TFile} from 'obsidian';
+import * as path from 'path';
 
 /*
  * Generic lib functions
@@ -33,9 +34,9 @@ async function delay(milliseconds: number): Promise<void> {
  */
 
 /**
- * Modify document preview HTML to embed pictures and do some cleanup for pasting.
+ * Render markdown to DOM, with some clean-up and embed images as data uris.
  */
-class HTMLConverter {
+class DocumentRenderer {
 	private modal: CopyingToHtmlModal;
 
 	// if true, render svg to bitmap
@@ -47,57 +48,105 @@ class HTMLConverter {
 		['jpg', 'image/jpeg'],
 	]);
 
+	private readonly imageExtensions = ['gif', 'png', 'jpg', 'jpeg', 'bmp', 'png', 'webp', 'tiff', 'svg'];
+
+	private readonly vaultPath: string;
+	private readonly vaultUriPrefix: string;
+
 	constructor(private view: MarkdownView, private app: App) {
+		this.vaultPath = (this.app.vault.getRoot().vault.adapter as FileSystemAdapter).getBasePath()
+			.replace(/\\/g, '/');
+
+		this.vaultUriPrefix = `app://local/${this.vaultPath}`;
 	}
 
-	public async documentToHTML(): Promise<HTMLElement> {
+	/**
+	 * Render document into detached HTMLElement
+	 */
+	public async renderDocument(): Promise<HTMLElement> {
 		this.modal = new CopyingToHtmlModal(this.app);
 		this.modal.open();
 
 		try {
 			// @ts-ignore
-			this.app.commands.executeCommandById('markdown:toggle-preview');
-			const topNode = await this.waitForPreviewToLoad();
+			// this.app.commands.executeCommandById('markdown:toggle-preview');
+			const topNode = await this.renderMarkdown();
 			return await this.transformHTML(topNode!);
 		} finally {
 			this.modal.close();
 
 			// Return to edit view
 			// @ts-ignore
-			this.app.commands.executeCommandById('markdown:toggle-preview');
+			// this.app.commands.executeCommandById('markdown:toggle-preview');
 		}
 	}
 
 	/**
-	 * When we switch to preview mode it takes some time before the preview is rendered. Wait until it contains
-	 * a known child node to ensure it is loaded
-	 * FIXME: this is not robust, and we should wait for some event that indicates that preview has finished loading
-	 * @private
-	 * @returns a ready preview element
+	 * Render current view into HTMLElement, expanding embedded links
 	 */
-	private async waitForPreviewToLoad(): Promise<HTMLElement> {
-		// @ts-ignore
-		const topNode: HTMLElement = this.view.contentEl.querySelector('.markdown-reading-view .markdown-preview-section');
+	private async renderMarkdown(): Promise<HTMLElement> {
+		const inputFile = this.view.file.path;
+		const markdown = this.view.data;
+		const wrapper = document.createElement('div');
+		wrapper.style.display = 'hidden';
+		document.body.appendChild(wrapper);
+		await MarkdownRenderer.renderMarkdown(markdown, wrapper, path.dirname(inputFile), this.view);
 
-		// wait maximum 10s (at 20 tests per second) for the preview to be loaded
-		const LOADING_POLL_DELAY = 50; // ms
-		const MAX_ATTEMPTS = 10 * (1000 / LOADING_POLL_DELAY);
-		for (let trial = 0; trial < MAX_ATTEMPTS; ++trial) {
-			const pusher = topNode.querySelector('.markdown-preview-pusher');
-			if (pusher !== null) {
-				// work-around - see function comment above
-				await delay(250);
-				// found it -> the preview is loaded
-				return topNode;
-			}
-			await delay(50);
-		}
+		await this.replaceEmbeds(wrapper);
 
-		throw Error('Preview could not be loaded');
+		const result = wrapper.cloneNode(true) as HTMLElement;
+		document.body.removeChild(wrapper);
+		return result;
 	}
 
 	/**
-	 * Transform the preview to clean it up and embed images
+	 * Replace span.internal-embed elements with the files / documents they link to. Images are not transformed
+	 * into data uris at this stage.
+	 */
+	private async replaceEmbeds(rootNode: HTMLElement): Promise<void> {
+		for (const node of Array.from(rootNode.querySelectorAll('.internal-embed'))) {
+			const src = node.getAttr('src');
+			const alt = node.getAttr('alt');
+
+			if (src) {
+				const extension = this.getExtension(src);
+				if (extension === '' || extension === 'md') {
+					// TODO: this is messy : I agree Oliver Balfour :D And it's not the only part
+					const subfolder = src.substring(this.vaultPath.length);
+					const file = this.app.metadataCache.getFirstLinkpathDest(src, subfolder);
+					if (!file) {
+						console.error("Could not load ${src}, not found in metadataCache");
+					} else {
+						const markdown = await this.app.vault.cachedRead(file);
+						await MarkdownRenderer.renderMarkdown(markdown, node as HTMLElement, path.dirname(file.path), this.view)
+					}
+				} else if (this.imageExtensions.includes(extension)) {
+					const subfolder = src.substring(this.vaultPath.length);
+					const file = this.app.metadataCache.getFirstLinkpathDest(src, subfolder);
+					if (!file) {
+						console.error("Could not load image ${src}, not found in metadataCache");
+					} else {
+						const replacement = document.createElement('img');
+						replacement.setAttribute('src', `${this.vaultUriPrefix}/${file.path}`);
+
+						if (alt) {
+							replacement.setAttribute('alt', alt);
+						}
+
+						node.replaceWith(replacement);
+					}
+				} else {
+					// Not handling video, audio, ... on purpose
+					node.remove();
+				}
+			} else {
+				node.remove();
+			}
+		}
+	}
+
+	/**
+	 * Transform rendered markdown to clean it up and embed images
 	 */
 	private async transformHTML(element: HTMLElement): Promise<HTMLElement> {
 		// Remove styling which forces the preview to fill the window vertically
@@ -108,9 +157,7 @@ class HTMLConverter {
 
 		this.removeCollapseIndicators(node);
 		this.removeButtons(node);
-
 		await this.embedImages(node);
-
 		return node;
 	}
 
@@ -130,7 +177,7 @@ class HTMLConverter {
 	private async embedImages(node: HTMLElement): Promise<HTMLElement> {
 		const promises: Promise<void>[] = [];
 
-		// Replace all image souces
+		// Replace all image sources
 		node.querySelectorAll('img')
 			.forEach(img => {
 				if (img.src) {
@@ -155,19 +202,13 @@ class HTMLConverter {
 
 	/** replace image src attribute with data uri */
 	private async replaceImageSource(image: HTMLImageElement): Promise<void> {
-		const vaultPath = (this.app.vault.getRoot().vault.adapter as FileSystemAdapter).getBasePath()
-			.replace(/\\/g, '/');
-
-		const vaultUriPrefix = `app://local/${vaultPath}`;
 		const imageSourcePath = decodeURI(image.src);
 
-		if (imageSourcePath.startsWith(vaultUriPrefix)) {
+		if (imageSourcePath.startsWith(this.vaultUriPrefix)) {
 			// Transform uri to Obsidian relative path
-			let path = imageSourcePath.substring(vaultUriPrefix.length + 1)
+			let path = imageSourcePath.substring(this.vaultUriPrefix.length + 1)
 				.replace(/[?#].*/, '');
 			path = decodeURI(path);
-
-			// console.log(`attempt direct fetch from vault ${path}`);
 
 			const mimeType = this.guessMimeType(path);
 			const data = await this.readFromVault(path, mimeType);
@@ -210,6 +251,7 @@ class HTMLConverter {
 					const uri = canvas.toDataURL('image/png');
 					resolve(uri);
 				} catch (err) {
+					// leave error at `log` level (not `error`), since we leave an url that may be workable
 					console.log(`failed ${url}`, err);
 					// if we fail, leave the original url.
 					// This way images that we may not load from external sources (tainted) may still be accessed
@@ -230,9 +272,8 @@ class HTMLConverter {
 	/**
 	 * Get binary data as b64 from a file in the vault
 	 */
-	private async readFromVault(path: string, mimeType: string) : Promise<string> {
+	private async readFromVault(path: string, mimeType: string): Promise<string> {
 		const tfile = this.app.vault.getAbstractFileByPath(path) as TFile;
-
 		const data = await this.app.vault.readBinary(tfile);
 
 		const blob = new Blob([data], {type: mimeType});
@@ -250,11 +291,18 @@ class HTMLConverter {
 	}
 
 	/** Guess an image's mime-type based on its extension */
-	private guessMimeType(path: string): string {
-		const extensionMatch = /\.(.*?)$/.exec(path);
-		const extension = extensionMatch ? extensionMatch[1].toLowerCase() : 'png';
-		const mimeType = this.mimeMap.get(extension) || `image/${extension}`;
-		return mimeType;
+	private guessMimeType(filePath: string): string {
+		const extension = this.getExtension(filePath) || 'png';
+		return this.mimeMap.get(extension) || `image/${extension}`;
+	}
+
+	private getExtension(filePath: string): string {
+		let result = path.extname(filePath).toLowerCase();
+		if (path) {
+			// remove leading dot
+			result = result.substring(1);
+		}
+		return result;
 	}
 
 	private isSvg(mimeType: string): boolean {
@@ -269,10 +317,10 @@ export default class CopyAsHTMLPlugin extends Plugin {
 			name: 'Copy current document to clipboard',
 
 			editorCallback: async (editor: Editor, view: MarkdownView) => {
-				const copier = new HTMLConverter(view, this.app);
+				const copier = new DocumentRenderer(view, this.app);
 
 				try {
-					const document = await copier.documentToHTML();
+					const document = await copier.renderDocument();
 
 					const data =
 						new ClipboardItem({
