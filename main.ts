@@ -107,6 +107,7 @@ class HTMLConverter {
 		node.style.minHeight = '0';
 
 		this.removeCollapseIndicators(node);
+		this.removeButtons(node);
 
 		await this.embedImages(node);
 
@@ -116,6 +117,12 @@ class HTMLConverter {
 	/** Remove the collapse indicators from HTML, not needed (and not working) in copy */
 	private removeCollapseIndicators(node: HTMLElement) {
 		node.querySelectorAll('.collapse-indicator')
+			.forEach(node => node.remove());
+	}
+
+	/** Remove button elements (which appear after code blocks) */
+	private removeButtons(node: HTMLElement) {
+		node.querySelectorAll('button')
 			.forEach(node => node.remove());
 	}
 
