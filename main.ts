@@ -152,10 +152,11 @@ class HTMLConverter {
 			.replace(/\\/g, '/');
 
 		const vaultUriPrefix = `app://local/${vaultPath}`;
+		const imageSourcePath = decodeURI(image.src);
 
-		if (image.src.startsWith(vaultUriPrefix)) {
+		if (imageSourcePath.startsWith(vaultUriPrefix)) {
 			// Transform uri to Obsidian relative path
-			let path = image.src.substring(vaultUriPrefix.length + 1)
+			let path = imageSourcePath.substring(vaultUriPrefix.length + 1)
 				.replace(/[?#].*/, '');
 			path = decodeURI(path);
 
