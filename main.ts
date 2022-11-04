@@ -1,4 +1,15 @@
-import {App, FileSystemAdapter, MarkdownPostProcessor, MarkdownRenderer, MarkdownView, Modal, Notice, Plugin, TFile} from 'obsidian';
+import {
+	App,
+	FileSystemAdapter,
+	MarkdownRenderer,
+	MarkdownView,
+	Modal,
+	Notice,
+	Plugin,
+	PluginSettingTab,
+	Setting,
+	TFile
+} from 'obsidian';
 import * as path from 'path';
 
 /*
@@ -49,9 +60,6 @@ let ppLastBlockDate = Date.now();
 class DocumentRenderer {
 	private modal: CopyingToHtmlModal;
 
-	// if true, render svg to bitmap
-	private optionConvertSvgToBitmap: boolean = true;
-
 	// time required after last block was rendered before we decide that rendering a view is completed
 	private optionRenderSettlingDelay: number = 100;
 
@@ -66,7 +74,8 @@ class DocumentRenderer {
 	private readonly vaultPath: string;
 	private readonly vaultUriPrefix: string;
 
-	constructor(private view: MarkdownView, private app: App) {
+	constructor(private view: MarkdownView, private app: App,
+				private options: { convertSvgToBitmap: boolean } = {convertSvgToBitmap: true}) {
 		this.vaultPath = (this.app.vault.getRoot().vault.adapter as FileSystemAdapter).getBasePath()
 			.replace(/\\/g, '/');
 
@@ -152,7 +161,7 @@ class DocumentRenderer {
 			if (src) {
 				const extension = this.getExtension(src);
 				if (extension === '' || extension === 'md') {
-					// TODO: this is messy : I agree Oliver Balfour :D And it's not the only part
+					// TODO: this is messy : I agree Oliver Balfour :D
 					const subfolder = src.substring(this.vaultPath.length);
 					const file = this.app.metadataCache.getFirstLinkpathDest(src, subfolder);
 					if (!file) {
@@ -222,7 +231,7 @@ class DocumentRenderer {
 		node.querySelectorAll('img')
 			.forEach(img => {
 				if (img.src) {
-					if (img.src.startsWith('data:image/svg+xml') && this.optionConvertSvgToBitmap) {
+					if (img.src.startsWith('data:image/svg+xml') && this.options.convertSvgToBitmap) {
 						// image is an SVG, encoded as a data uri. This is the case with Excalidraw for instance
 						// convert it to bitmap
 						promises.push(this.replaceImageSource(img));
@@ -254,8 +263,7 @@ class DocumentRenderer {
 			const mimeType = this.guessMimeType(path);
 			const data = await this.readFromVault(path, mimeType);
 
-			// Leave choice here : return SVG or render as bitmap
-			if (this.isSvg(mimeType) && this.optionConvertSvgToBitmap) {
+			if (this.isSvg(mimeType) && this.options.convertSvgToBitmap) {
 				// render svg to bitmap for compatibility w/ for instance gmail
 				image.src = await this.imageToDataUri(data);
 			} else {
@@ -351,7 +359,6 @@ class DocumentRenderer {
 	}
 }
 
-
 /**
  * Modal to show progress during conversion
  */
@@ -379,9 +386,49 @@ class CopyingToHtmlModal extends Modal {
 	}
 }
 
-export default class CopyAsHTMLPlugin extends Plugin {
+/**
+ * Settings dialog
+ */
+class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
+	constructor(app: App, private plugin: CopyDocumentAsHTMLPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
+	}
+
+	display(): void {
+		const {containerEl} = this;
+
+		containerEl.empty();
+
+		containerEl.createEl('h2', {text: 'Copy document as HTML - Settings'});
+
+		new Setting(containerEl)
+			.setName('Convert SVG files to bitmap')
+			.setDesc('If checked SVG files are converted to bitmap. This makes the copied documents heavier but improves compatibility (eg. with gmail).')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.convertSvgToBitmap)
+				.onChange(async (value) => {
+					this.plugin.settings.convertSvgToBitmap = value;
+					await this.plugin.saveSettings();
+				}));
+	}
+}
+
+type CopyDocumentAsHTMLSettings = {
+	/** If set svg are converted to bitmap */
+	convertSvgToBitmap: boolean;
+}
+
+const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
+	convertSvgToBitmap: true
+}
+
+export default class CopyDocumentAsHTMLPlugin extends Plugin {
+	settings: CopyDocumentAsHTMLSettings;
 
 	async onload() {
+		await this.loadSettings();
+
 		this.addCommand({
 			id: 'copy-as-html',
 			name: 'Copy current document to clipboard',
@@ -399,7 +446,7 @@ export default class CopyAsHTMLPlugin extends Plugin {
 				}
 
 				console.log(`Copying "${activeView.file.path}" to clipboard...`);
-				const copier = new DocumentRenderer(activeView, this.app);
+				const copier = new DocumentRenderer(activeView, this.app, {convertSvgToBitmap: this.settings.convertSvgToBitmap});
 
 				try {
 					copyIsRunning = true;
@@ -445,5 +492,17 @@ export default class CopyAsHTMLPlugin extends Plugin {
 			ppIsProcessing = false;
 		});
 		afterAllPostProcessor.sortOrder = 10000;
+
+		// Register settings dialog
+
+		this.addSettingTab(new CopyDocumentAsHTMLSettingsTab(this.app, this));
+	}
+
+	async loadSettings() {
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+	}
+
+	async saveSettings() {
+		await this.saveData(this.settings);
 	}
 }
