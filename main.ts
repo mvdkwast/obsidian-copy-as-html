@@ -1,4 +1,4 @@
-import {App, Editor, FileSystemAdapter, MarkdownRenderer, MarkdownView, Modal, Notice, Plugin, TFile, Workspace} from 'obsidian';
+import {App, FileSystemAdapter, MarkdownPostProcessor, MarkdownRenderer, MarkdownView, Modal, Notice, Plugin, TFile} from 'obsidian';
 import * as path from 'path';
 
 /*
@@ -33,6 +33,16 @@ async function delay(milliseconds: number): Promise<void> {
  * Plugin code
  */
 
+/** Don't allow multiple copy processes to run at the same time */
+let copyIsRunning = false;
+
+/** true while a block is being processed by MarkDownPostProcessor instances */
+let ppIsProcessing = false;
+
+/** moment at which the last block finished post-processing */
+let ppLastBlockDate = Date.now();
+
+
 /**
  * Render markdown to DOM, with some clean-up and embed images as data uris.
  */
@@ -42,8 +52,8 @@ class DocumentRenderer {
 	// if true, render svg to bitmap
 	private optionConvertSvgToBitmap: boolean = true;
 
-	// hacky delay to allow dataviews to render until I find a better solution :'(
-	private optionRenderSettlingDelay: number = 2000;
+	// time required after last block was rendered before we decide that rendering a view is completed
+	private optionRenderSettlingDelay: number = 100;
 
 	// only those which are different from image/${extension}
 	private readonly mimeMap = new Map([
@@ -74,6 +84,7 @@ class DocumentRenderer {
 			// @ts-ignore
 			// this.app.commands.executeCommandById('markdown:toggle-preview');
 			const topNode = await this.renderMarkdown();
+
 			return await this.transformHTML(topNode!);
 		} finally {
 			this.modal.close();
@@ -94,13 +105,39 @@ class DocumentRenderer {
 		wrapper.style.display = 'hidden';
 		document.body.appendChild(wrapper);
 		await MarkdownRenderer.renderMarkdown(markdown, wrapper, path.dirname(inputFile), this.view);
-		await delay(this.optionRenderSettlingDelay);
+		await this.untilRendered();
 
 		await this.replaceEmbeds(wrapper);
 
 		const result = wrapper.cloneNode(true) as HTMLElement;
 		document.body.removeChild(wrapper);
 		return result;
+	}
+
+	/**
+	 * Wait until the view has finished rendering
+	 *
+	 * Beware, this is a dirty hack...
+	 *
+	 * We have no reliable way to know if the document finished rendering. For instance dataviews or task blocks
+	 * may not have been post processed.
+	 * MarkdownPostProcessors are called on all the "blocks" in the HTML view. So we register one post-processor
+	 * with high-priority (low-number to mark the block as being processed, and another one with low-priority that
+	 * runs after all other post-processors).
+	 * Now if we see that no blocks are being post-processed, it can mean 2 things :
+	 *  - either we are between blocks
+	 *  - or we finished rendering the view
+	 * On the premise that the time that elapses between the post-processing of consecutive blocks is always very
+	 * short (just iteration, no work is done), we conclude that the render is finished if no block has been
+	 * rendered for enough time.
+	 */
+	private async untilRendered() {
+		while (ppIsProcessing || Date.now() - ppLastBlockDate < this.optionRenderSettlingDelay) {
+			if (ppLastBlockDate === 0) {
+				break;
+			}
+			await delay(20);
+		}
 	}
 
 	/**
@@ -314,47 +351,6 @@ class DocumentRenderer {
 	}
 }
 
-export default class CopyAsHTMLPlugin extends Plugin {
-	async onload() {
-		this.addCommand({
-			id: 'copy-as-html',
-			name: 'Copy current document to clipboard',
-
-			callback: async () => {
-				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (!activeView) {
-					console.log('Nothing to copy: No active markdown view');
-					return;
-				}
-
-				console.log(`Copying "${activeView.file.path}" to clipboard...`);
-				const copier = new DocumentRenderer(activeView, this.app);
-
-				try {
-					const document = await copier.renderDocument();
-
-					const data =
-						new ClipboardItem({
-							"text/html": new Blob([document.outerHTML], {
-								// @ts-ignore
-								type: ["text/html", 'text/plain']
-							}),
-							"text/plain": new Blob([document.outerHTML], {
-								type: "text/plain"
-							}),
-						});
-
-					await navigator.clipboard.write([data]);
-					console.log('Copied document to clipboard');
-					new Notice('document copied to clipboard')
-				} catch (error) {
-					new Notice(`copy failed: ${error}`);
-					console.error('copy failed', error);
-				}
-			},
-		});
-	}
-}
 
 /**
  * Modal to show progress during conversion
@@ -380,5 +376,74 @@ class CopyingToHtmlModal extends Modal {
 	onClose() {
 		let {contentEl} = this;
 		contentEl.empty();
+	}
+}
+
+export default class CopyAsHTMLPlugin extends Plugin {
+
+	async onload() {
+		this.addCommand({
+			id: 'copy-as-html',
+			name: 'Copy current document to clipboard',
+
+			callback: async () => {
+				if (copyIsRunning) {
+					console.log('Document is already being copied');
+					return;
+				}
+
+				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (!activeView) {
+					console.log('Nothing to copy: No active markdown view');
+					return;
+				}
+
+				console.log(`Copying "${activeView.file.path}" to clipboard...`);
+				const copier = new DocumentRenderer(activeView, this.app);
+
+				try {
+					copyIsRunning = true;
+
+					ppLastBlockDate = Date.now();
+					ppIsProcessing = true;
+
+					const document = await copier.renderDocument();
+
+					const data =
+						new ClipboardItem({
+							"text/html": new Blob([document.outerHTML], {
+								// @ts-ignore
+								type: ["text/html", 'text/plain']
+							}),
+							"text/plain": new Blob([document.outerHTML], {
+								type: "text/plain"
+							}),
+						});
+
+					await navigator.clipboard.write([data]);
+					console.log('Copied document to clipboard');
+					new Notice('document copied to clipboard')
+				} catch (error) {
+					new Notice(`copy failed: ${error}`);
+					console.error('copy failed', error);
+				} finally {
+					copyIsRunning = false;
+				}
+			},
+		});
+
+		// Register post-processors that keep track of the blocks being rendered. For explanation,
+		// @see DocumentRenderer#untilRendered()
+
+		const beforeAllPostProcessor = this.registerMarkdownPostProcessor(async () => {
+			ppIsProcessing = true;
+		});
+		beforeAllPostProcessor.sortOrder = -10000;
+
+		const afterAllPostProcessor = this.registerMarkdownPostProcessor(async () => {
+			ppLastBlockDate = Date.now();
+			ppIsProcessing = false;
+		});
+		afterAllPostProcessor.sortOrder = 10000;
 	}
 }
