@@ -42,6 +42,9 @@ class DocumentRenderer {
 	// if true, render svg to bitmap
 	private optionConvertSvgToBitmap: boolean = true;
 
+	// hacky delay to allow dataviews to render until I find a better solution :'(
+	private optionRenderSettlingDelay: number = 2000;
+
 	// only those which are different from image/${extension}
 	private readonly mimeMap = new Map([
 		['svg', 'image/svg+xml'],
@@ -91,6 +94,7 @@ class DocumentRenderer {
 		wrapper.style.display = 'hidden';
 		document.body.appendChild(wrapper);
 		await MarkdownRenderer.renderMarkdown(markdown, wrapper, path.dirname(inputFile), this.view);
+		await delay(this.optionRenderSettlingDelay);
 
 		await this.replaceEmbeds(wrapper);
 
