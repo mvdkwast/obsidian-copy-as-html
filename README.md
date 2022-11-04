@@ -23,14 +23,12 @@ The plugin converts image references to data urls, so no references to the vault
 
 ## Known issues
 
-- Only works in edit mode.
 - Special fields (front-matter, double-colon attributes, ...) are not removed.
 - data-uris can use a lot of memory for big/many pictures
 
 ## TODO / wish-list
 
 - Adjust image resolution / quality
-- Should be usable in preview mode also, using `Workspace.activeFile` 
 
 ## Development
 
