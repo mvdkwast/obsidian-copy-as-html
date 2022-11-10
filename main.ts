@@ -1,5 +1,6 @@
 import {
 	App,
+	arrayBufferToBase64,
 	FileSystemAdapter,
 	MarkdownRenderer,
 	MarkdownView,
@@ -10,7 +11,6 @@ import {
 	Setting,
 	TFile
 } from 'obsidian';
-import * as path from 'path';
 
 /*
  * Generic lib functions
@@ -108,12 +108,12 @@ class DocumentRenderer {
 	 * Render current view into HTMLElement, expanding embedded links
 	 */
 	private async renderMarkdown(): Promise<HTMLElement> {
-		const inputFile = this.view.file.path;
+		const inputFile = this.view.file;
 		const markdown = this.view.data;
 		const wrapper = document.createElement('div');
 		wrapper.style.display = 'hidden';
 		document.body.appendChild(wrapper);
-		await MarkdownRenderer.renderMarkdown(markdown, wrapper, path.dirname(inputFile), this.view);
+		await MarkdownRenderer.renderMarkdown(markdown, wrapper, inputFile.path, this.view);
 		await this.untilRendered();
 
 		await this.replaceEmbeds(wrapper);
@@ -158,41 +158,57 @@ class DocumentRenderer {
 			const src = node.getAttr('src');
 			const alt = node.getAttr('alt');
 
-			if (src) {
-				const extension = this.getExtension(src);
-				if (extension === '' || extension === 'md') {
-					// TODO: this is messy : I agree Oliver Balfour :D
-					const subfolder = src.substring(this.vaultPath.length);
-					const file = this.app.metadataCache.getFirstLinkpathDest(src, subfolder);
-					if (!file) {
-						console.error("Could not load ${src}, not found in metadataCache");
-					} else {
-						const markdown = await this.app.vault.cachedRead(file);
-						await MarkdownRenderer.renderMarkdown(markdown, node as HTMLElement, path.dirname(file.path), this.view)
-					}
-				} else if (this.imageExtensions.includes(extension)) {
-					const subfolder = src.substring(this.vaultPath.length);
-					const file = this.app.metadataCache.getFirstLinkpathDest(src, subfolder);
-					if (!file) {
-						console.error("Could not load image ${src}, not found in metadataCache");
-					} else {
-						const replacement = document.createElement('img');
-						replacement.setAttribute('src', `${this.vaultUriPrefix}/${file.path}`);
+			if (!src) {
+				node.remove();
+				continue;
+			}
 
-						if (alt) {
-							replacement.setAttribute('alt', alt);
-						}
+			const extension = this.getExtension(src);
+			if (extension === '' || extension === 'md') {
+				const file = this.getEmbeddedFile(src);
+				if (file) {
+					// Not recursively rendering the embedded elements here. If someone turns up with a need for
+					// this it should be easy to adapt this.
+					const markdown = await this.app.vault.cachedRead(file);
+					await MarkdownRenderer.renderMarkdown(markdown, node as HTMLElement, file.path, this.view)
+				}
+			} else if (this.imageExtensions.includes(extension)) {
+				const file = this.getEmbeddedFile(src);
+				if (file) {
+					const replacement = document.createElement('img');
+					replacement.setAttribute('src', `${this.vaultUriPrefix}/${file.path}`);
 
-						node.replaceWith(replacement);
+					if (alt) {
+						replacement.setAttribute('alt', alt);
 					}
-				} else {
-					// Not handling video, audio, ... on purpose
-					node.remove();
+
+					node.replaceWith(replacement);
 				}
 			} else {
+				// Not handling video, audio, ... on purpose
 				node.remove();
 			}
 		}
+	}
+
+	/**
+	 * Get a TFile from its `src` atribute of a `.linked-embed`, or undefined if not found or not a file.
+	 */
+	private getEmbeddedFile(src: string): TFile | undefined {
+		// TODO: this is messy : I agree Oliver Balfour :D
+		const subfolder = src.substring(this.vaultPath.length);
+		const file = this.app.metadataCache.getFirstLinkpathDest(src, subfolder);
+		if (!file) {
+			console.error(`Could not load ${src}, not found in metadataCache`);
+			return undefined;
+		}
+
+		if (!(file instanceof TFile)) {
+			console.error(`Embedded element '${src}' is not a file`);
+			return undefined;
+		}
+
+		return file as TFile;
 	}
 
 	/**
@@ -324,19 +340,7 @@ class DocumentRenderer {
 	private async readFromVault(path: string, mimeType: string): Promise<string> {
 		const tfile = this.app.vault.getAbstractFileByPath(path) as TFile;
 		const data = await this.app.vault.readBinary(tfile);
-
-		const blob = new Blob([data], {type: mimeType});
-		const reader = new FileReader();
-		const dataUriPromise = new Promise<string>((resolve, reject) => {
-			reader.onload = (event) => {
-				const base64: string = reader.result as string;
-				resolve(base64);
-			};
-			reader.onerror = reject;
-			reader.readAsDataURL(blob);
-		});
-
-		return await dataUriPromise;
+		return `data:${mimeType};base64,` + arrayBufferToBase64(data);
 	}
 
 	/** Guess an image's mime-type based on its extension */
@@ -345,13 +349,12 @@ class DocumentRenderer {
 		return this.mimeMap.get(extension) || `image/${extension}`;
 	}
 
+	/** Get lower-case extension for a path */
 	private getExtension(filePath: string): string {
-		let result = path.extname(filePath).toLowerCase();
-		if (path) {
-			// remove leading dot
-			result = result.substring(1);
-		}
-		return result;
+		// avoid using the "path" library
+		const fileName = filePath.slice(filePath.lastIndexOf('/') + 1);
+		return fileName.slice(fileName.lastIndexOf('.')+1 || fileName.length)
+			.toLowerCase();
 	}
 
 	private isSvg(mimeType: string): boolean {
@@ -433,49 +436,23 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 			id: 'copy-as-html',
 			name: 'Copy current document to clipboard',
 
-			callback: async () => {
+			checkCallback: (checking: boolean): boolean => {
 				if (copyIsRunning) {
 					console.log('Document is already being copied');
-					return;
+					return false;
 				}
 
 				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 				if (!activeView) {
 					console.log('Nothing to copy: No active markdown view');
-					return;
+					return false;
 				}
 
-				console.log(`Copying "${activeView.file.path}" to clipboard...`);
-				const copier = new DocumentRenderer(activeView, this.app, {convertSvgToBitmap: this.settings.convertSvgToBitmap});
-
-				try {
-					copyIsRunning = true;
-
-					ppLastBlockDate = Date.now();
-					ppIsProcessing = true;
-
-					const document = await copier.renderDocument();
-
-					const data =
-						new ClipboardItem({
-							"text/html": new Blob([document.outerHTML], {
-								// @ts-ignore
-								type: ["text/html", 'text/plain']
-							}),
-							"text/plain": new Blob([document.outerHTML], {
-								type: "text/plain"
-							}),
-						});
-
-					await navigator.clipboard.write([data]);
-					console.log('Copied document to clipboard');
-					new Notice('document copied to clipboard')
-				} catch (error) {
-					new Notice(`copy failed: ${error}`);
-					console.error('copy failed', error);
-				} finally {
-					copyIsRunning = false;
+				if (!checking) {
+					this.doCopy(activeView);
 				}
+
+				return true;
 			},
 		});
 
@@ -504,5 +481,39 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	private async doCopy(activeView: MarkdownView) {
+		console.log(`Copying "${activeView.file.path}" to clipboard...`);
+		const copier = new DocumentRenderer(activeView, this.app, {convertSvgToBitmap: this.settings.convertSvgToBitmap});
+
+		try {
+			copyIsRunning = true;
+
+			ppLastBlockDate = Date.now();
+			ppIsProcessing = true;
+
+			const document = await copier.renderDocument();
+
+			const data =
+				new ClipboardItem({
+					"text/html": new Blob([document.outerHTML], {
+						// @ts-ignore
+						type: ["text/html", 'text/plain']
+					}),
+					"text/plain": new Blob([document.outerHTML], {
+						type: "text/plain"
+					}),
+				});
+
+			await navigator.clipboard.write([data]);
+			console.log('Copied document to clipboard');
+			new Notice('document copied to clipboard')
+		} catch (error) {
+			new Notice(`copy failed: ${error}`);
+			console.error('copy failed', error);
+		} finally {
+			copyIsRunning = false;
+		}
 	}
 }
