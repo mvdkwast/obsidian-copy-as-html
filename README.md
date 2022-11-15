@@ -3,10 +3,12 @@
 Plugin for [Obsidian](https://obsidian.md) that copies the current document to the clipboard, so it can be pasted into
 HTML aware application like gmail.
 
-This plugin exposes the `Copy document as HTML: Copy the current document to clipboard` command, which can be bound to a keyboard
-shortcut.
+This plugin exposes the `Copy document as HTML: Copy the current document to clipboard` command, which can be bound to a
+keyboard shortcut.
 
-## Support
+## Features
+
+Simple styling is applied to the document. 
 
 Currently working with :
 
@@ -17,13 +19,19 @@ Currently working with :
 - ✅ obsidian-dataview - for large dataview blocks the content may not be complete
 - ✅ Excalidraw - rendering as bitmap solves pasting in gmail
 
+### Advanced
+
+- It is possible to customize or replace the stylesheet in the settings dialog. 
+- The default is to convert SVG to bitmap for better compatibility at the cost of potential quality loss. If you know
+  that the application you are going to paste into has good .svg support, you can toggle the `Convert SVG to bitmap`
+  setting.
+
 ## Implementation
 
 The plugin converts image references to data urls, so no references to the vault are included in the HTML.
 
 ## Known issues
 
-- No styling yet (next priority)
 - No mobile support yet
 - Special fields (front-matter, double-colon attributes, ...) are not removed.
 - data-uris can use a lot of memory for big/many pictures
@@ -34,7 +42,9 @@ The plugin converts image references to data urls, so no references to the vault
 
 ## INSTALL
 
-If you want to check this out before this plugin is approved as a community plugin, you may use the [Obsidian BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin to install it. Point it to this url : https://github.com/mvdkwast/obsidian-copy-as-html
+If you want to check this out before this plugin is approved as a community plugin, you may use the [Obsidian
+BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin to install it. Point it to this url :
+https://github.com/mvdkwast/obsidian-copy-as-html
 
 Don't be afraid to comment if anything seems wrong !
 

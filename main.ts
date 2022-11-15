@@ -39,6 +39,146 @@ async function delay(milliseconds: number): Promise<void> {
 	return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
+/**
+ * Static assets
+ */
+
+const DEFAULT_STYLESHEET =
+`body,input {
+  font-family: "Roboto","Helvetica Neue",Helvetica,Arial,sans-serif
+}
+
+code, kbd, pre {
+  font-family: "Roboto Mono", "Courier New", Courier, monospace;
+  background-color: #f5f5f5;
+}
+
+pre {
+  padding: 1em 0.5em;
+}
+
+table {
+  background: white;
+  border: 1px solid #666;
+  border-collapse: collapse;
+  padding: 0.5em;
+}
+
+table thead th,
+table tfoot th {
+  text-align: left;
+  background-color: #eaeaea;
+  color: black;
+}
+
+table th, table td {
+  border: 1px solid #ddd;
+  padding: 0.5em;
+}
+
+table td {
+  color: #222222;
+}
+
+.callout,
+.callout[data-callout="abstract"] .callout-title,
+.callout[data-callout="summary"] .callout-title,
+.callout[data-callout="tldr"]  .callout-title,
+.callout[data-callout="faq"] .callout-title,
+.callout[data-callout="info"] .callout-title,
+.callout[data-callout="help"] .callout-title {
+  background-color: #4355dbaa
+}
+.callout[data-callout="tip"] .callout-title,
+.callout[data-callout="hint"] .callout-title,
+.callout[data-callout="important"] .callout-title {
+  background-color: #34bbe6;
+}
+.callout[data-callout="success"] .callout-title,
+.callout[data-callout="check"] .callout-title,
+.callout[data-callout="done"] .callout-title {
+  background-color: #a3e048;
+}
+.callout[data-callout="question"] .callout-title,
+.callout[data-callout="todo"] .callout-title {
+  background-color: #49da9a;
+}
+.callout[data-callout="caution"] .callout-title,
+.callout[data-callout="attention"] .callout-title {
+  background-color: #f7d038;
+}
+.callout[data-callout="warning"] .callout-title,
+.callout[data-callout="missing"] .callout-title,
+.callout[data-callout="bug"] .callout-title {
+  background-color: #eb7532;
+}
+.callout[data-callout="failure"] .callout-title,
+.callout[data-callout="fail"] .callout-title,
+.callout[data-callout="danger"] .callout-title,
+.callout[data-callout="error"] .callout-title {
+  background-color: #e6261f;
+}
+.callout[data-callout="example"] .callout-title {
+  background-color: #d23be7;
+}
+.callout[data-callout="quote"] .callout-title,
+.callout[data-callout="cite"] .callout-title {
+  background-color: #aaaaaa;
+}
+
+.callout-icon {
+  flex: 0 0 auto;
+  display: flex;
+  align-self: center;
+}
+
+svg.svg-icon {
+  height: 18px;
+  width: 18px;
+  stroke-width: 1.75px;
+}
+
+.callout {
+  overflow: hidden;
+  margin: 1em 0;
+  box-shadow: 0 2px 2px 0 rgba(0, 0, 0, 0.14), 0 1px 5px 0 rgba(0, 0, 0, 0.12), 0 3px 1px -2px rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.callout-title {
+  padding: .5em;
+  display: flex;
+  gap: 8px;
+  font-size: inherit;
+  color: black;
+  line-height: 1.3em;
+}
+
+.callout-title-inner {
+  font-weight: bold;
+  color: black;
+}
+
+.callout-content {
+  overflow-x: auto;
+  padding: 0.25em .5em;
+  color: #222222;
+  background-color: white !important;
+}
+`;
+
+
+const htmlTemplate = (stylesheet: string, body: string, title: string) => `<html>
+<head>
+  <title>${title}</title>
+  <style>
+    ${stylesheet}
+  </style>
+</head>
+<body>
+${body}
+</body>
+</html>`;
 
 /*
  * Plugin code
@@ -90,17 +230,10 @@ class DocumentRenderer {
 		this.modal.open();
 
 		try {
-			// @ts-ignore
-			// this.app.commands.executeCommandById('markdown:toggle-preview');
 			const topNode = await this.renderMarkdown();
-
 			return await this.transformHTML(topNode!);
 		} finally {
 			this.modal.close();
-
-			// Return to edit view
-			// @ts-ignore
-			// this.app.commands.executeCommandById('markdown:toggle-preview');
 		}
 	}
 
@@ -306,7 +439,6 @@ class DocumentRenderer {
 
 		const dataUriPromise = new Promise<string>((resolve, reject) => {
 			image.onload = () => {
-				// TODO: resize image ?
 				canvas.width = image.naturalWidth;
 				canvas.height = image.naturalHeight;
 
@@ -321,7 +453,7 @@ class DocumentRenderer {
 					// if we fail, leave the original url.
 					// This way images that we may not load from external sources (tainted) may still be accessed
 					// (eg. plantuml)
-					// TODO: attempt fallback with fetch ?
+					// TODO: should we attempt to fallback with fetch ?
 					resolve(url);
 				}
 
@@ -353,7 +485,7 @@ class DocumentRenderer {
 	private getExtension(filePath: string): string {
 		// avoid using the "path" library
 		const fileName = filePath.slice(filePath.lastIndexOf('/') + 1);
-		return fileName.slice(fileName.lastIndexOf('.')+1 || fileName.length)
+		return fileName.slice(fileName.lastIndexOf('.') + 1 || fileName.length)
 			.toLowerCase();
 	}
 
@@ -366,11 +498,11 @@ class DocumentRenderer {
  * Modal to show progress during conversion
  */
 class CopyingToHtmlModal extends Modal {
-	private _progress: HTMLElement;
-
 	constructor(app: App) {
 		super(app);
 	}
+
+	private _progress: HTMLElement;
 
 	get progress() {
 		return this._progress;
@@ -414,16 +546,54 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 					this.plugin.settings.convertSvgToBitmap = value;
 					await this.plugin.saveSettings();
 				}));
+
+		const useCustomStylesheetSetting = new Setting(containerEl)
+			.setName('Provide a custom stylesheet')
+			.setDesc('The default stylesheet provides minimalistic theming. You may want to customize it for better looks.');
+
+		const customStylesheetSetting = new Setting(containerEl)
+			.setName('Custom stylesheet')
+			.setDesc('Disabling the setting above will replace the custom stylesheet with the default.')
+			.setClass('custom-css-setting')
+			.addTextArea(textArea => textArea
+				.setValue(this.plugin.settings.styleSheet)
+				.onChange(async (value) => {
+					this.plugin.settings.styleSheet = value;
+					await this.plugin.saveSettings();
+				}));
+
+		useCustomStylesheetSetting.addToggle(toggle => {
+			customStylesheetSetting.settingEl.toggle(this.plugin.settings.useCustomStylesheet);
+
+			toggle
+				.setValue(this.plugin.settings.useCustomStylesheet)
+				.onChange(async (value) => {
+					this.plugin.settings.useCustomStylesheet = value;
+					customStylesheetSetting.settingEl.toggle(this.plugin.settings.useCustomStylesheet);
+					if (!value) {
+						this.plugin.settings.styleSheet = DEFAULT_STYLESHEET;
+					}
+					await this.plugin.saveSettings();
+				});
+		});
 	}
 }
 
 type CopyDocumentAsHTMLSettings = {
 	/** If set svg are converted to bitmap */
 	convertSvgToBitmap: boolean;
+
+	/** remember if the stylesheet was default or custom */
+	useCustomStylesheet: boolean;
+
+	/** Style-sheet */
+	styleSheet: string;
 }
 
 const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
-	convertSvgToBitmap: true
+	convertSvgToBitmap: true,
+	useCustomStylesheet: false,
+	styleSheet: DEFAULT_STYLESHEET
 }
 
 export default class CopyDocumentAsHTMLPlugin extends Plugin {
@@ -477,6 +647,11 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+
+		// reload it so we may update it in a new release
+		if (!this.settings.useCustomStylesheet) {
+			this.settings.styleSheet = DEFAULT_STYLESHEET;
+		}
 	}
 
 	async saveSettings() {
@@ -493,15 +668,16 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 			ppLastBlockDate = Date.now();
 			ppIsProcessing = true;
 
-			const document = await copier.renderDocument();
+			const htmlBody = await copier.renderDocument();
+			const htmlDocument = htmlTemplate(this.settings.styleSheet, htmlBody.outerHTML, activeView.file.name);
 
 			const data =
 				new ClipboardItem({
-					"text/html": new Blob([document.outerHTML], {
+					"text/html": new Blob([htmlDocument], {
 						// @ts-ignore
 						type: ["text/html", 'text/plain']
 					}),
-					"text/plain": new Blob([document.outerHTML], {
+					"text/plain": new Blob([htmlDocument], {
 						type: "text/plain"
 					}),
 				});
