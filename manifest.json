@@ -6,5 +6,5 @@
 	"description": "Copy the current document to clipboard as HTML, including images",
 	"author": "mvdkwast",
 	"authorUrl": "https://github.com/mvdkwast",
-	"isDesktopOnly": false
+	"isDesktopOnly": true
 }
