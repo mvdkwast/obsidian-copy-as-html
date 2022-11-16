@@ -215,7 +215,10 @@ class DocumentRenderer {
 	private readonly vaultUriPrefix: string;
 
 	constructor(private view: MarkdownView, private app: App,
-				private options: { convertSvgToBitmap: boolean } = {convertSvgToBitmap: true}) {
+				private options: { convertSvgToBitmap: boolean, removeFrontMatter: boolean } = {
+					convertSvgToBitmap: true,
+					removeFrontMatter: true
+				}) {
 		this.vaultPath = (this.app.vault.getRoot().vault.adapter as FileSystemAdapter).getBasePath()
 			.replace(/\\/g, '/');
 
@@ -325,7 +328,7 @@ class DocumentRenderer {
 	}
 
 	/**
-	 * Get a TFile from its `src` atribute of a `.linked-embed`, or undefined if not found or not a file.
+	 * Get a TFile from its `src` attribute of a `.linked-embed`, or undefined if not found or not a file.
 	 */
 	private getEmbeddedFile(src: string): TFile | undefined {
 		// TODO: this is messy : I agree Oliver Balfour :D
@@ -351,13 +354,21 @@ class DocumentRenderer {
 		// Remove styling which forces the preview to fill the window vertically
 		// @ts-ignore
 		const node: HTMLElement = element.cloneNode(true);
-		node.style.paddingBottom = '0';
-		node.style.minHeight = '0';
+		node.removeAttribute('style');
 
+		if (this.options.removeFrontMatter) {
+			this.removeFrontMatter(node);
+		}
 		this.removeCollapseIndicators(node);
 		this.removeButtons(node);
 		await this.embedImages(node);
 		return node;
+	}
+
+	/** Remove front-matter */
+	private removeFrontMatter(node: HTMLElement) {
+		node.querySelectorAll('.frontmatter, .frontmatter-container')
+			.forEach(node => node.remove());
 	}
 
 	/** Remove the collapse indicators from HTML, not needed (and not working) in copy */
@@ -381,8 +392,8 @@ class DocumentRenderer {
 			.forEach(img => {
 				if (img.src) {
 					if (img.src.startsWith('data:image/svg+xml') && this.options.convertSvgToBitmap) {
-						// image is an SVG, encoded as a data uri. This is the case with Excalidraw for instance
-						// convert it to bitmap
+						// image is an SVG, encoded as a data uri. This is the case with Excalidraw for instance.
+						// Convert it to bitmap
 						promises.push(this.replaceImageSource(img));
 					} else if (!img.src.startsWith('data:')) {
 						// render bitmaps, except if already as data-uri
@@ -538,8 +549,18 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 		containerEl.createEl('h2', {text: 'Copy document as HTML - Settings'});
 
 		new Setting(containerEl)
+			.setName('Remove front-matter sections')
+			.setDesc("If checked, the YAML content between --- lines at the front of the document are removed. If you don't know what this means, leave it on.")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.removeFrontMatter)
+				.onChange(async (value) => {
+					this.plugin.settings.removeFrontMatter = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
 			.setName('Convert SVG files to bitmap')
-			.setDesc('If checked SVG files are converted to bitmap. This makes the copied documents heavier but improves compatibility (eg. with gmail).')
+			.setDesc('If checked, SVG files are converted to bitmap. This makes the copied documents heavier but improves compatibility (eg. with gmail).')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.convertSvgToBitmap)
 				.onChange(async (value) => {
@@ -580,6 +601,9 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 }
 
 type CopyDocumentAsHTMLSettings = {
+	/** Remove front-matter */
+	removeFrontMatter: boolean;
+
 	/** If set svg are converted to bitmap */
 	convertSvgToBitmap: boolean;
 
@@ -591,6 +615,7 @@ type CopyDocumentAsHTMLSettings = {
 }
 
 const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
+	removeFrontMatter: true,
 	convertSvgToBitmap: true,
 	useCustomStylesheet: false,
 	styleSheet: DEFAULT_STYLESHEET
@@ -660,7 +685,10 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 
 	private async doCopy(activeView: MarkdownView) {
 		console.log(`Copying "${activeView.file.path}" to clipboard...`);
-		const copier = new DocumentRenderer(activeView, this.app, {convertSvgToBitmap: this.settings.convertSvgToBitmap});
+		const copier = new DocumentRenderer(activeView, this.app, {
+			convertSvgToBitmap: this.settings.convertSvgToBitmap,
+			removeFrontMatter: this.settings.removeFrontMatter
+		});
 
 		try {
 			copyIsRunning = true;
