@@ -665,9 +665,9 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 		});
 		afterAllPostProcessor.sortOrder = 10000;
 
-		// Register settings dialog
-
+		// Register UI elements
 		this.addSettingTab(new CopyDocumentAsHTMLSettingsTab(this.app, this));
+		this.setupEditorMenuEntry();
 	}
 
 	async loadSettings() {
@@ -719,5 +719,21 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 		} finally {
 			copyIsRunning = false;
 		}
+	}
+
+	private setupEditorMenuEntry() {
+		this.registerEvent(
+			this.app.workspace.on("file-menu", (menu, file, view) => {
+				menu.addItem((item) => {
+					item
+						.setTitle("Copy as HTML")
+						.setIcon("clipboard-copy")
+						.onClick(async () => {
+							// @ts-ignore
+							this.app.commands.executeCommandById('copy-document-as-html:copy-as-html');
+						});
+				});
+			})
+		);
 	}
 }
