@@ -32,8 +32,8 @@ The plugin converts image references to data urls, so no references to the vault
 
 ## Known issues
 
-- No mobile support yet
-- Special fields (front-matter, double-colon attributes, ...) are not removed.
+- No mobile support
+- Special fields (double-colon attributes, ...) are not removed. (front-matter is)
 - data-uris can use a lot of memory for big/many pictures
 
 ## Install
