@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-copy-document-as-html",
-	"version": "0.2.3",
+	"version": "0.2.4",
 	"description": "Copy the current document to clipboard as HTML, including images",
 	"main": "main.js",
 	"scripts": {

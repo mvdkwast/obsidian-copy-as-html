@@ -165,8 +165,20 @@ svg.svg-icon {
   color: #222222;
   background-color: white !important;
 }
-`;
 
+ul.contains-task-list {
+  padding-left: 0;
+  list-style: none;
+}
+
+ul.contains-task-list ul.contains-task-list {
+  padding-left: 2em;
+}
+
+ul.contains-task-list li input[type="checkbox"] {
+  margin-right: .5em;
+}
+`;
 
 const htmlTemplate = (stylesheet: string, body: string, title: string) => `<html>
 <head>
@@ -359,6 +371,7 @@ class DocumentRenderer {
 		if (this.options.removeFrontMatter) {
 			this.removeFrontMatter(node);
 		}
+		this.makeCheckboxesReadOnly(node);
 		this.removeCollapseIndicators(node);
 		this.removeButtons(node);
 		await this.embedImages(node);
@@ -369,6 +382,11 @@ class DocumentRenderer {
 	private removeFrontMatter(node: HTMLElement) {
 		node.querySelectorAll('.frontmatter, .frontmatter-container')
 			.forEach(node => node.remove());
+	}
+
+	private makeCheckboxesReadOnly(node: HTMLElement) {
+		node.querySelectorAll('input[type="checkbox"]')
+			.forEach(node => node.setAttribute('disabled', 'disabled'));
 	}
 
 	/** Remove the collapse indicators from HTML, not needed (and not working) in copy */
