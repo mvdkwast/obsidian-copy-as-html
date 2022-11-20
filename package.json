@@ -12,6 +12,7 @@
 	"author": "",
 	"license": "MIT",
 	"devDependencies": {
+		"@codemirror/language": "^6.3.1",
 		"@types/node": "^16.11.6",
 		"@typescript-eslint/eslint-plugin": "5.29.0",
 		"@typescript-eslint/parser": "5.29.0",
@@ -24,6 +25,7 @@
 	},
 	"dependencies": {
 		"@codemirror/state": "^6.1.2",
-		"@codemirror/view": "^6.4.0"
+		"@codemirror/view": "^6.4.0",
+		"mathjax-full": "^3.2.2"
 	}
 }

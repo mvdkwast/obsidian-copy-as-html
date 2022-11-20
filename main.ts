@@ -12,6 +12,19 @@ import {
 	TFile
 } from 'obsidian';
 
+import {mathjax} from 'mathjax-full/js/mathjax'
+import {TeX} from 'mathjax-full/js/input/tex'
+import {SVG} from 'mathjax-full/js/output/svg'
+import {AllPackages} from 'mathjax-full/js/input/tex/AllPackages'
+import {RegisterHTMLHandler} from 'mathjax-full/js/handlers/html'
+import {btoa} from "buffer";
+import {OptionList} from "mathjax-full/js/util/Options";
+
+import {syntaxTree} from '@codemirror/language';
+import {EditorView} from "@codemirror/view";
+import {SyntaxNodeRef} from "@lezer/common";
+import {browserAdaptor} from "mathjax-full/js/adaptors/browserAdaptor";
+
 /*
  * Generic lib functions
  */
@@ -44,7 +57,7 @@ async function delay(milliseconds: number): Promise<void> {
  */
 
 const DEFAULT_STYLESHEET =
-`body,input {
+	`body,input {
   font-family: "Roboto","Helvetica Neue",Helvetica,Arial,sans-serif
 }
 
@@ -178,6 +191,15 @@ ul.contains-task-list ul.contains-task-list {
 ul.contains-task-list li input[type="checkbox"] {
   margin-right: .5em;
 }
+
+.math-inline {
+}
+
+.math-block {
+	display: block;
+	margin-left: auto;
+	margin-right: auto;
+}
 `;
 
 const htmlTemplate = (stylesheet: string, body: string, title: string) => `<html>
@@ -205,6 +227,13 @@ let ppIsProcessing = false;
 /** moment at which the last block finished post-processing */
 let ppLastBlockDate = Date.now();
 
+/**
+ * a block of MathJax content
+ */
+type MathBlock = {
+	type: 'inline' | 'block',
+	text: string
+};
 
 /**
  * Render markdown to DOM, with some clean-up and embed images as data uris.
@@ -240,12 +269,12 @@ class DocumentRenderer {
 	/**
 	 * Render document into detached HTMLElement
 	 */
-	public async renderDocument(): Promise<HTMLElement> {
+	public async renderDocument(mathBlocks: MathBlock[]): Promise<HTMLElement> {
 		this.modal = new CopyingToHtmlModal(this.app);
 		this.modal.open();
 
 		try {
-			const topNode = await this.renderMarkdown();
+			const topNode = await this.renderMarkdown(mathBlocks);
 			return await this.transformHTML(topNode!);
 		} finally {
 			this.modal.close();
@@ -255,7 +284,7 @@ class DocumentRenderer {
 	/**
 	 * Render current view into HTMLElement, expanding embedded links
 	 */
-	private async renderMarkdown(): Promise<HTMLElement> {
+	private async renderMarkdown(mathBlocks: MathBlock[]): Promise<HTMLElement> {
 		const inputFile = this.view.file;
 		const markdown = this.view.data;
 		const wrapper = document.createElement('div');
@@ -265,6 +294,7 @@ class DocumentRenderer {
 		await this.untilRendered();
 
 		await this.replaceEmbeds(wrapper);
+		await this.replaceMathJax(wrapper, mathBlocks);
 
 		const result = wrapper.cloneNode(true) as HTMLElement;
 		document.body.removeChild(wrapper);
@@ -360,6 +390,39 @@ class DocumentRenderer {
 	}
 
 	/**
+	 * replace all MathJax blocks with a svg. This relies on the premise that the MathJax blocks in the source document
+	 * are in the same order as in the HTML which should always be the case, and `el.querySelectorAll()` guarantees
+	 * document order.
+	 */
+	private async replaceMathJax(rootNode: HTMLElement, mathBlocks: MathBlock[]) {
+		const nodes = rootNode.querySelectorAll('.math.math-inline, .math.math-block');
+		if (nodes.length === 0) {
+			// don't bother to initialize mathJax
+			return;
+		}
+
+		const convertMathJax = buildMathJaxConverter();
+
+		if (nodes.length !== mathBlocks.length) {
+			console.error('Not rendering math: markdown doesn\'t match rendered math blocks');
+			return;
+		}
+
+		for (let i = 0; i < nodes.length; ++i) {
+			const mathSvg = convertMathJax(mathBlocks[i].text);
+			const style = this.getStyleFromSvg(mathSvg);
+
+			const mathSvgEncoded = `data:image/svg+xml;base64,` + btoa(mathSvg);
+			const node = nodes[i];
+			const img = node.createEl('img');
+			img.src = mathSvgEncoded;
+			if (style) img.style.cssText = style;
+			img.className = mathBlocks[i].type === 'inline' ? 'math-inline' : 'math-block';
+			node.replaceWith(img);
+		}
+	}
+
+	/**
 	 * Transform rendered markdown to clean it up and embed images
 	 */
 	private async transformHTML(element: HTMLElement): Promise<HTMLElement> {
@@ -410,9 +473,9 @@ class DocumentRenderer {
 			.forEach(img => {
 				if (img.src) {
 					if (img.src.startsWith('data:image/svg+xml') && this.options.convertSvgToBitmap) {
-						// image is an SVG, encoded as a data uri. This is the case with Excalidraw for instance.
-						// Convert it to bitmap
-						promises.push(this.replaceImageSource(img));
+						// image is an SVG, encoded as a data uri. This is the case with Excalidraw and MathJax
+						// for instance. Convert it to bitmap
+						promises.push(this.convertSvgToBitmap(img));
 					} else if (!img.src.startsWith('data:')) {
 						// render bitmaps, except if already as data-uri
 						promises.push(this.replaceImageSource(img));
@@ -454,6 +517,24 @@ class DocumentRenderer {
 			// wherever we intend to paste the document.
 			image.src = await this.imageToDataUri(image.src);
 		}
+	}
+
+	/**
+	 * Draw SVG to bitmap. Preserve attributes
+	 */
+	private async convertSvgToBitmap(image: HTMLImageElement): Promise<void> {
+		const src = image.src;
+		image.src = await this.imageToDataUri(src);
+	}
+
+	/**
+	 * Parse SVG to extract style attribute at root level. Needed for vertical centering of inline MathJax.
+	 */
+	private getStyleFromSvg(svgData: string) {
+		const parser = new DOMParser();
+		const svgDoc = parser.parseFromString(svgData, 'image/svg+xml');
+		const root = svgDoc.documentElement;
+		return root.getAttribute('style');
 	}
 
 	/**
@@ -639,6 +720,27 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 	styleSheet: DEFAULT_STYLESHEET
 }
 
+function buildMathJaxConverter() {
+	const adaptor = browserAdaptor()
+	RegisterHTMLHandler(adaptor)
+
+	const document = mathjax.document('', {
+		InputJax: new TeX({packages: AllPackages}),
+		OutputJax: new SVG({fontCache: 'local'})
+	})
+
+	const options: OptionList = {
+		em: 50,
+		ex: 25,
+		containerWidth: 1280,
+	}
+
+	return (math: string): string => {
+		const node = document.convert(math, options);
+		return document.adaptor.innerHTML(node)
+	}
+}
+
 export default class CopyDocumentAsHTMLPlugin extends Plugin {
 	settings: CopyDocumentAsHTMLSettings;
 
@@ -708,13 +810,17 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 			removeFrontMatter: this.settings.removeFrontMatter
 		});
 
+		// @ts-ignore
+		const cm = activeView.editor.cm as EditorView;
+		const mathBlocks = this.extractMathBlocks(cm);
+
 		try {
 			copyIsRunning = true;
 
 			ppLastBlockDate = Date.now();
 			ppIsProcessing = true;
 
-			const htmlBody = await copier.renderDocument();
+			const htmlBody = await copier.renderDocument(mathBlocks);
 			const htmlDocument = htmlTemplate(this.settings.styleSheet, htmlBody.outerHTML, activeView.file.name);
 
 			const data =
@@ -753,5 +859,47 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 				});
 			})
 		);
+	}
+
+	/**
+	 * Retrieve all math blocks from Markdown document
+	 */
+	private extractMathBlocks(cm: EditorView) {
+		type MathBlockRange = {
+			type: 'inline' | 'block',
+			from: number,
+			to?: number
+		};
+
+		const mathRanges: MathBlockRange[] = [];
+
+		syntaxTree(cm.state).iterate({
+			enter: (node: SyntaxNodeRef) => {
+				switch (node.type.name) {
+					case 'formatting_formatting-math_formatting-math-begin_keyword_math':
+						mathRanges.push({
+							type: 'inline',
+							from: node.to
+						});
+						break;
+					case 'formatting_formatting-math_formatting-math-begin_keyword_math_math-block':
+						mathRanges.push({
+							type: 'block',
+							from: node.to
+						});
+						break;
+					case 'formatting_formatting-math_formatting-math-end_keyword_math_math-':
+						mathRanges[mathRanges.length - 1].to = node.from;
+						break;
+				}
+			}
+		});
+
+		return mathRanges.map(range => {
+			return {
+				type: range.type,
+				text: cm.state.sliceDoc(range.from, range.to)
+			}
+		});
 	}
 }
