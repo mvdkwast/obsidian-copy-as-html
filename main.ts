@@ -16,14 +16,15 @@ import {mathjax} from 'mathjax-full/js/mathjax'
 import {TeX} from 'mathjax-full/js/input/tex'
 import {SVG} from 'mathjax-full/js/output/svg'
 import {AllPackages} from 'mathjax-full/js/input/tex/AllPackages'
-import {RegisterHTMLHandler} from 'mathjax-full/js/handlers/html'
 import {btoa} from "buffer";
 import {OptionList} from "mathjax-full/js/util/Options";
 
 import {syntaxTree} from '@codemirror/language';
 import {EditorView} from "@codemirror/view";
 import {SyntaxNodeRef} from "@lezer/common";
+import {MathJax, MathJaxObject} from "mathjax-full/js/components/global";
 import {browserAdaptor} from "mathjax-full/js/adaptors/browserAdaptor";
+import {RegisterHTMLHandler} from "mathjax-full/js/handlers/html";
 
 /*
  * Generic lib functions
@@ -346,7 +347,7 @@ class DocumentRenderer {
 				const file = this.getEmbeddedFile(src);
 				if (file) {
 					// Not recursively rendering the embedded elements here. If someone turns up with a need for
-					// this it should be easy to adapt this.
+					// this, it should be easy to adapt this.
 					const markdown = await this.app.vault.cachedRead(file);
 					await MarkdownRenderer.renderMarkdown(markdown, node as HTMLElement, file.path, this.view)
 				}
@@ -381,11 +382,6 @@ class DocumentRenderer {
 			return undefined;
 		}
 
-		if (!(file instanceof TFile)) {
-			console.error(`Embedded element '${src}' is not a file`);
-			return undefined;
-		}
-
 		return file as TFile;
 	}
 
@@ -412,29 +408,26 @@ class DocumentRenderer {
 			const mathSvg = convertMathJax(mathBlocks[i].text);
 
 			// Strip height and width attributes, so we can render at natural size. Width and height are then put
-			// on the img element so scale remains correct. SVG images are not affected, but if we convert to bitmap
-			// we would otherwise get a blurry image if rendering into a small area.
+			// on the img element so scale remains correct. This doesn't change how the SVG is rendered in SVG mode,
+			// but if we convert to bitmap we would otherwise get a blurry image if rendering into a small area.
 
-			const parser = new DOMParser();
-			const svgDoc = parser.parseFromString(mathSvg, 'image/svg+xml');
-			const svgRoot = svgDoc.documentElement;
-			const svgStyle = svgRoot.getAttribute('style');
-			const svgWidth = svgRoot.attributes.getNamedItem('width')?.value;
-			const svgHeight = svgRoot.attributes.getNamedItem('height')?.value;
+			const svgWidth = mathSvg.getAttribute('width') ?? '';
+			const svgHeight = mathSvg.getAttribute('height') ?? '';
+			const svgStyle = mathSvg.getAttribute('style') ?? '';
 
-			svgRoot.attributes.removeNamedItem('height');
-			svgRoot.attributes.removeNamedItem('width');
-			const mathSvgStripped = svgRoot.outerHTML;
+			mathSvg.removeAttribute('width');
+			mathSvg.removeAttribute('height');
 
-			const mathSvgEncoded = `data:image/svg+xml;base64,` + btoa(mathSvgStripped);
-			const node = nodes[i];
-			const img = node.createEl('img');
-			img.src = mathSvgEncoded;
+			const svgAsString = mathSvg.outerHTML;
+			const mathSvgEncoded = `data:image/svg+xml;base64,` + btoa(svgAsString);
 
 			const widthCss = svgWidth ? `width:${svgWidth}` : '';
 			const heightCss = svgHeight ? `height:${svgHeight}` : '';
 			const style = [svgStyle, widthCss, heightCss].join(';');
 
+			const node = nodes[i];
+			const img = node.createEl('img');
+			img.src = mathSvgEncoded;
 			if (style) img.style.cssText = style;
 			img.className = mathBlocks[i].type === 'inline' ? 'math-inline' : 'math-block';
 
@@ -731,6 +724,24 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 }
 
 function buildMathJaxConverter() {
+/*
+    *** save for later : piggyback on the Obsidian MathJax instance, and reconfigure it to add SVG output ***
+    *** this would remove a lot of dependencies (code is 2.5MB with extra MathJax lib
+
+	// @ts-ignore
+	const mj = window.MathJax as MathJaxObject;
+
+	// config.startup.output = 'svg'
+
+	console.log('window outputs', mj);
+	console.log('local outputs', MathJax);
+
+	const document = mj._.mathjax.mathjax.document('', {
+		InputJax: MathJax._.input,
+		OutputJax: new SVG({fontCache: 'local'})
+	});
+*/
+
 	const adaptor = browserAdaptor()
 	RegisterHTMLHandler(adaptor)
 
@@ -745,9 +756,8 @@ function buildMathJaxConverter() {
 		containerWidth: 1280,
 	}
 
-	return (math: string): string => {
-		const node = document.convert(math, options);
-		return document.adaptor.innerHTML(node)
+	return (math: string): HTMLElement => {
+		return document.convert(math, options).firstChild;
 	}
 }
 
