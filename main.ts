@@ -410,14 +410,34 @@ class DocumentRenderer {
 
 		for (let i = 0; i < nodes.length; ++i) {
 			const mathSvg = convertMathJax(mathBlocks[i].text);
-			const style = this.getStyleFromSvg(mathSvg);
 
-			const mathSvgEncoded = `data:image/svg+xml;base64,` + btoa(mathSvg);
+			// Strip height and width attributes, so we can render at natural size. Width and height are then put
+			// on the img element so scale remains correct. SVG images are not affected, but if we convert to bitmap
+			// we would otherwise get a blurry image if rendering into a small area.
+
+			const parser = new DOMParser();
+			const svgDoc = parser.parseFromString(mathSvg, 'image/svg+xml');
+			const svgRoot = svgDoc.documentElement;
+			const svgStyle = svgRoot.getAttribute('style');
+			const svgWidth = svgRoot.attributes.getNamedItem('width')?.value;
+			const svgHeight = svgRoot.attributes.getNamedItem('height')?.value;
+
+			svgRoot.attributes.removeNamedItem('height');
+			svgRoot.attributes.removeNamedItem('width');
+			const mathSvgStripped = svgRoot.outerHTML;
+
+			const mathSvgEncoded = `data:image/svg+xml;base64,` + btoa(mathSvgStripped);
 			const node = nodes[i];
 			const img = node.createEl('img');
 			img.src = mathSvgEncoded;
+
+			const widthCss = svgWidth ? `width:${svgWidth}` : '';
+			const heightCss = svgHeight ? `height:${svgHeight}` : '';
+			const style = [svgStyle, widthCss, heightCss].join(';');
+
 			if (style) img.style.cssText = style;
 			img.className = mathBlocks[i].type === 'inline' ? 'math-inline' : 'math-block';
+
 			node.replaceWith(img);
 		}
 	}
@@ -525,16 +545,6 @@ class DocumentRenderer {
 	private async convertSvgToBitmap(image: HTMLImageElement): Promise<void> {
 		const src = image.src;
 		image.src = await this.imageToDataUri(src);
-	}
-
-	/**
-	 * Parse SVG to extract style attribute at root level. Needed for vertical centering of inline MathJax.
-	 */
-	private getStyleFromSvg(svgData: string) {
-		const parser = new DOMParser();
-		const svgDoc = parser.parseFromString(svgData, 'image/svg+xml');
-		const root = svgDoc.documentElement;
-		return root.getAttribute('style');
 	}
 
 	/**
