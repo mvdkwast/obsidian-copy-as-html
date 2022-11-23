@@ -22,7 +22,6 @@ import {OptionList} from "mathjax-full/js/util/Options";
 import {syntaxTree} from '@codemirror/language';
 import {EditorView} from "@codemirror/view";
 import {SyntaxNodeRef} from "@lezer/common";
-import {MathJax, MathJaxObject} from "mathjax-full/js/components/global";
 import {browserAdaptor} from "mathjax-full/js/adaptors/browserAdaptor";
 import {RegisterHTMLHandler} from "mathjax-full/js/handlers/html";
 
@@ -196,10 +195,15 @@ ul.contains-task-list li input[type="checkbox"] {
 .math-inline {
 }
 
+.math-block-wrapper {
+	text-align: center;
+}
+
 .math-block {
 	display: block;
 	margin-left: auto;
 	margin-right: auto;
+	text-align: center;
 }
 `;
 
@@ -429,9 +433,18 @@ class DocumentRenderer {
 			const img = node.createEl('img');
 			img.src = mathSvgEncoded;
 			if (style) img.style.cssText = style;
-			img.className = mathBlocks[i].type === 'inline' ? 'math-inline' : 'math-block';
 
-			node.replaceWith(img);
+			if (mathBlocks[i].type === 'inline') {
+				img.className = 'math-inline';
+				node.replaceWith(img);
+			}
+			else {
+				const wrapper = node.createDiv();
+				wrapper.className = 'math-block-wrapper';
+				img.className = 'math-block';
+				wrapper.appendChild(img);
+				node.replaceWith(wrapper);
+			}
 		}
 	}
 
