@@ -180,10 +180,33 @@ ul.contains-task-list li input[type="checkbox"] {
 }
 `;
 
+// Thank you again Olivier Balfour !
+const MERMAID_STYLESHEET = ` 
+:root {
+  --default-font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Microsoft YaHei Light", sans-serif;
+  --font-monospace: 'Source Code Pro', monospace;
+  --background-primary: #ffffff;
+  --background-modifier-border: #ddd;
+  --text-accent: #705dcf;
+  --text-accent-hover: #7a6ae6;
+  --text-normal: #2e3338;
+  --background-secondary: #f2f3f5;
+  --background-secondary-alt: #e3e5e8;
+  --text-muted: #888888;
+  --font-mermaid: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Microsoft YaHei Light", sans-serif;
+  --text-error: #E4374B;
+  --background-primary-alt: '#fafafa';
+  --background-accent: '';
+  --interactive-accent: hsl( 254,  80%, calc( 68% + 2.5%));
+  --background-modifier-error: #E4374B;
+}
+`;
+
 const htmlTemplate = (stylesheet: string, body: string, title: string) => `<html>
 <head>
   <title>${title}</title>
   <style>
+  	${MERMAID_STYLESHEET}
     ${stylesheet}
   </style>
 </head>
@@ -375,6 +398,7 @@ class DocumentRenderer {
 		this.removeCollapseIndicators(node);
 		this.removeButtons(node);
 		await this.embedImages(node);
+		await this.renderSvg(node);
 		return node;
 	}
 
@@ -422,6 +446,40 @@ class DocumentRenderer {
 
 		// @ts-ignore
 		this.modal.progress.max = 100;
+
+		// @ts-ignore
+		await allWithProgress(promises, percentCompleted => this.modal.progress.value = percentCompleted);
+		return node;
+	}
+
+	private async renderSvg(node: HTMLElement): Promise<Element> {
+		if (!this.options.convertSvgToBitmap) {
+			return node;
+		}
+
+		const promises: Promise<void>[] = [];
+
+		const replaceSvg = async (svg: SVGSVGElement) => {
+			let style: HTMLStyleElement = svg.querySelector('style') || svg.appendChild(document.createElement('style'));
+			style.innerHTML += MERMAID_STYLESHEET;
+
+			const svgData = `data:image/svg+xml;base64,` + Buffer.from(svg.outerHTML).toString('base64');
+			const dataUri = await this.imageToDataUri(svgData);
+
+			const img = svg.createEl('img');
+			img.style.cssText = svg.style.cssText;
+			img.src = dataUri;
+
+			svg.parentElement!.replaceChild(img, svg);
+		};
+
+		node.querySelectorAll('svg')
+			.forEach(svg => {
+				promises.push(replaceSvg(svg));
+			});
+
+		// @ts-ignore
+		this.modal.progress.max = 0;
 
 		// @ts-ignore
 		await allWithProgress(promises, percentCompleted => this.modal.progress.value = percentCompleted);
