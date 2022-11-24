@@ -18,6 +18,7 @@ Currently working with :
 - ✅ obsidian-tasks
 - ✅ obsidian-dataview - for large dataview blocks the content may not be complete
 - ✅ Excalidraw - rendering as bitmap solves pasting in gmail
+- ✅ Mermaid
 
 ### Advanced
 
