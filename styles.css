@@ -1,8 +1,13 @@
-/*
+.custom-css-setting {
+	height: 70%;
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.custom-css-setting > * {
+	height: 100%;
+	width: 60em;
+}
 
-If your plugin does not need CSS, delete this file.
-
-*/
+.custom-css-setting > * > textarea{
+	width:40em;
+	height: 100%;
+}

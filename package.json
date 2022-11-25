@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-sample-plugin",
-	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"name": "obsidian-copy-document-as-html",
+	"version": "0.3.0",
+	"description": "Copy the current document to clipboard as HTML, including images",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
@@ -17,13 +17,13 @@
 		"@typescript-eslint/parser": "5.29.0",
 		"builtin-modules": "3.3.0",
 		"esbuild": "0.14.47",
+		"eslint": "^8.26.0",
 		"obsidian": "latest",
 		"tslib": "2.4.0",
 		"typescript": "4.7.4"
 	},
 	"dependencies": {
 		"@codemirror/state": "^6.1.2",
-		"@codemirror/view": "^6.4.0",
-		"eslint": "^8.26.0"
+		"@codemirror/view": "^6.4.0"
 	}
 }
