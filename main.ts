@@ -713,6 +713,8 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
     styleSheet: DEFAULT_STYLESHEET
 }
 
+
+
 export default class CopyDocumentAsHTMLPlugin extends Plugin {
   settings: CopyDocumentAsHTMLSettings;
   
