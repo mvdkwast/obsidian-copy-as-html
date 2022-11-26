@@ -1,55 +1,35 @@
-# Copy Document as HTML
+# Copy Document as HTML + Api
 
-Plugin for [Obsidian](https://obsidian.md) that copies the current document to the clipboard, so it can be pasted into HTML aware application like gmail.
+Adds accessable api functions to this plugin: [copy-as-html](https://github.com/mvdkwast/obsidian-copy-as-html)
 
-This plugin exposes the `Copy document as HTML: Copy the current document to clipboard` command, which can be bound to a keyboard shortcut.
+## Added Functions
+- **Note**: These functions are added to the plugin instance itself.
+- **Note**: All functions are async! They return promises you must await!
+### <u>Convert View</u>
+Convert a markdown view to an html element.
 
-![image](https://user-images.githubusercontent.com/2441349/202304790-aea2a29e-2ed8-4ba2-bfb6-caaeb823e6f0.png)
+_Params_:
+* *{MarkdownView}* **view** The markdown: view to convert
+* *{{convertSvgToBitmap: boolean, removeFrontMatter: boolean}}* **options**: The options to pass to the converter.
 
-## Features
+*Return*: 
 
-Simple styling is applied to the document. 
+**Promise\<HTMLElement>**: A promise for an html element with the result of the markdown as html
 
-Currently working with :
+### <u>Convert Markdown</u>
+Convert a raw markdown string to an html element.
 
-- ✅ images
-- ✅ plantuml
-- ✅ diagrams
-- ✅ obsidian-tasks
-- ✅ obsidian-dataview - for large dataview blocks the content may not be complete
-- ✅ Excalidraw - rendering as bitmap solves pasting in gmail
-- ✅ Mermaid
+**Note**: This may cause tabs to open and close temporatily in the background, this is nessicary to render the items property without using the current view.
 
-### Advanced
+_Params_:
+* *{string}* **markdown**: The raw markdown content string to convert
+* *{string | undefined}* **sourceFilePath**: The source file to use for fetching frontmatter, links, embeds, etc.
+* *{{convertSvgToBitmap: boolean, removeFrontMatter: boolean}}* **options**: The options to pass to the converter.
 
-- It is possible to customize or replace the stylesheet in the settings dialog. 
-- The default is to convert SVG to bitmap for better compatibility at the cost of potential quality loss. If you know
-  that the application you are going to paste into has good .svg support, you can toggle the `Convert SVG to bitmap`
-  setting.
+*Return*: 
 
-## Implementation
-
-The plugin converts image references to data urls, so no references to the vault are included in the HTML.
-
-## Known issues
-
-- No mobile support
-- Special fields (double-colon attributes, ...) are not removed. (front-matter is)
-- data-uris can use a lot of memory for big/many pictures
-
-## Install
-
-Look for *Copy document as HTML* in the community plugin section in the Obsidian settings.
-
-Don't be afraid to comment if anything seems wrong !
-
-## Development
-
-Please see the [Obsidian sample plugin](https://github.com/obsidianmd/obsidian-sample-plugin).
+**Promise\<HTMLElement>**: A promise for an html element with the result of the markdown as html
 
 ## Credits
 
-- Oliver Balfour for his [obsidian-pandoc](https://github.com/OliverBalfour/obsidian-pandoc) plugin, which helped me solve
-some rendering issues.
-- TfTHacker for his [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin which makes beta-testing a breeze.
-- PJ Eby for his [Hot-reload](https://github.com/pjeby/hot-reload) plugins which makes plugin development fast and fun.
+- mvdkwast for the base plugin: [copy-as-html](https://github.com/mvdkwast/obsidian-copy-as-html)

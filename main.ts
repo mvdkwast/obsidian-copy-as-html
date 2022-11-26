@@ -1,15 +1,15 @@
 import {
-    App,
-    arrayBufferToBase64,
-    FileSystemAdapter,
-    MarkdownRenderer,
-    MarkdownView,
-    Modal,
-    Notice,
-    Plugin,
-    PluginSettingTab,
-    Setting,
-    TFile
+	App,
+	arrayBufferToBase64,
+	FileSystemAdapter,
+	MarkdownRenderer,
+	MarkdownView,
+	Modal,
+	Notice,
+	Plugin,
+	PluginSettingTab,
+	Setting,
+	TFile
 } from 'obsidian';
 
 /*
@@ -21,22 +21,22 @@ import {
  * https://stackoverflow.com/a/42342373/1341132
  */
 function allWithProgress(promises: Promise<any>[], callback: (percentCompleted: number) => void) {
-    let count = 0;
-    callback(0);
-    for (const promise of promises) {
-        promise.then(() => {
-            count++;
-            callback((count * 100) / promises.length);
-        });
-    }
-    return Promise.all(promises);
+	let count = 0;
+	callback(0);
+	for (const promise of promises) {
+		promise.then(() => {
+			count++;
+			callback((count * 100) / promises.length);
+		});
+	}
+	return Promise.all(promises);
 }
 
 /**
  * Do nothing for a while
  */
 async function delay(milliseconds: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, milliseconds));
+	return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
 /**
@@ -44,7 +44,7 @@ async function delay(milliseconds: number): Promise<void> {
  */
 
 const DEFAULT_STYLESHEET =
-    `body,input {
+	`body,input {
   font-family: "Roboto","Helvetica Neue",Helvetica,Arial,sans-serif
 }
 
@@ -206,8 +206,8 @@ const htmlTemplate = (stylesheet: string, body: string, title: string) => `<html
 <head>
   <title>${title}</title>
   <style>
-    ${MERMAID_STYLESHEET}
-    ${stylesheet}
+	${MERMAID_STYLESHEET}
+	${stylesheet}
   </style>
 </head>
 <body>
@@ -233,644 +233,673 @@ let ppLastBlockDate = Date.now();
  * Render markdown to DOM, with some clean-up and embed images as data uris.
  */
 class DocumentRenderer {
-    private modal: CopyingToHtmlModal;
+	private modal: CopyingToHtmlModal;
 
-    // time required after last block was rendered before we decide that rendering a view is completed
-    private optionRenderSettlingDelay: number = 100;
+	// time required after last block was rendered before we decide that rendering a view is completed
+	private optionRenderSettlingDelay: number = 100;
 
-    // only those which are different from image/${extension}
-    private readonly mimeMap = new Map([
-        ['svg', 'image/svg+xml'],
-        ['jpg', 'image/jpeg'],
-    ]);
+	// only those which are different from image/${extension}
+	private readonly mimeMap = new Map([
+		['svg', 'image/svg+xml'],
+		['jpg', 'image/jpeg'],
+	]);
 
-    private readonly imageExtensions = ['gif', 'png', 'jpg', 'jpeg', 'bmp', 'png', 'webp', 'tiff', 'svg'];
+	private readonly imageExtensions = ['gif', 'png', 'jpg', 'jpeg', 'bmp', 'png', 'webp', 'tiff', 'svg'];
 
-    private readonly vaultPath: string;
-    private readonly vaultUriPrefix: string;
+	private readonly vaultPath: string;
+	private readonly vaultUriPrefix: string;
 
-    constructor(
-        private view: MarkdownView,
-        private app: App,
-        private options: { convertSvgToBitmap: boolean, removeFrontMatter: boolean  } = {
-            convertSvgToBitmap: true,
-            removeFrontMatter: true
-        }
-    ) {
-        const adapter = this.app.vault.getRoot().vault.adapter;
-        if (adapter instanceof FileSystemAdapter) {
-            this.vaultPath = adapter.getBasePath()
-                .replace(/\\/g, '/');
-        } else {
-            this.vaultPath = "";
-        }
+	constructor(
+		private view: MarkdownView,
+		private app: App,
+		private options: { convertSvgToBitmap: boolean, removeFrontMatter: boolean  } = {
+			convertSvgToBitmap: true,
+			removeFrontMatter: true
+		}
+	) {
+		const adapter = this.app.vault.getRoot().vault.adapter;
+		if (adapter instanceof FileSystemAdapter) {
+			this.vaultPath = adapter.getBasePath()
+				.replace(/\\/g, '/');
+		} else {
+			this.vaultPath = "";
+		}
 
-        this.vaultUriPrefix = `app://local/${this.vaultPath}`;
-    }
+		this.vaultUriPrefix = `app://local/${this.vaultPath}`;
+	}
 
-    /**
-     * Render document into detached HTMLElement
-     */
-    public async renderDocument(showModal: boolean = true): Promise<HTMLElement> {
-        // show the modal?
-        if (showModal) {
-            this.modal = new CopyingToHtmlModal(this.app);
-            this.modal.open();
-        }
+	/**
+	 * Render document into detached HTMLElement
+	 */
+	public async renderDocument(showModal: boolean = true): Promise<HTMLElement> {
+		// show the modal?
+		if (showModal) {
+			this.modal = new CopyingToHtmlModal(this.app);
+			this.modal.open();
+		}
 
-        try {
-            const topNode = await this.renderMarkdown();
-            return await this.transformHTML(topNode!);
-        } finally {
-            if (showModal) {
-                this.modal.close();
-            }
-        }
-    }
+		try {
+			const topNode = await this.renderMarkdown();
+			return await this.transformHTML(topNode!);
+		} finally {
+			if (showModal) {
+				this.modal.close();
+			}
+		}
+	}
 
-    /**
-     * Render current view into HTMLElement, expanding embedded links
-     */
-    private async renderMarkdown(): Promise<HTMLElement> {
-        const inputFile = this.view.file;
-        const markdown = this.view.data;
-        const wrapper = document.createElement('div');
-        wrapper.style.display = 'hidden';
-        document.body.appendChild(wrapper);
-        await MarkdownRenderer.renderMarkdown(markdown, wrapper, inputFile.path, this.view);
-        await this.untilRendered();
+	/**
+	 * Render current view into HTMLElement, expanding embedded links
+	 */
+	private async renderMarkdown(): Promise<HTMLElement> {
+		const inputFile = this.view.file;
+		const markdown = this.view.data;
+		const wrapper = document.createElement('div');
+		wrapper.style.display = 'hidden';
+		document.body.appendChild(wrapper);
+		await MarkdownRenderer.renderMarkdown(markdown, wrapper, inputFile.path, this.view);
+		await this.untilRendered();
 
-        await this.replaceEmbeds(wrapper);
+		await this.replaceEmbeds(wrapper);
 
-        const result = wrapper.cloneNode(true) as HTMLElement;
-        document.body.removeChild(wrapper);
-        return result;
-    }
+		const result = wrapper.cloneNode(true) as HTMLElement;
+		document.body.removeChild(wrapper);
+		return result;
+	}
 
-    /**
-     * Wait until the view has finished rendering
-     *
-     * Beware, this is a dirty hack...
-     *
-     * We have no reliable way to know if the document finished rendering. For instance dataviews or task blocks
-     * may not have been post processed.
-     * MarkdownPostProcessors are called on all the "blocks" in the HTML view. So we register one post-processor
-     * with high-priority (low-number to mark the block as being processed, and another one with low-priority that
-     * runs after all other post-processors).
-     * Now if we see that no blocks are being post-processed, it can mean 2 things :
-     *  - either we are between blocks
-     *  - or we finished rendering the view
-     * On the premise that the time that elapses between the post-processing of consecutive blocks is always very
-     * short (just iteration, no work is done), we conclude that the render is finished if no block has been
-     * rendered for enough time.
-     */
-    private async untilRendered() {
-        while (ppIsProcessing || Date.now() - ppLastBlockDate < this.optionRenderSettlingDelay) {
-            if (ppLastBlockDate === 0) {
-                break;
-            }
-            await delay(20);
-        }
-    }
+	/**
+	 * Wait until the view has finished rendering
+	 *
+	 * Beware, this is a dirty hack...
+	 *
+	 * We have no reliable way to know if the document finished rendering. For instance dataviews or task blocks
+	 * may not have been post processed.
+	 * MarkdownPostProcessors are called on all the "blocks" in the HTML view. So we register one post-processor
+	 * with high-priority (low-number to mark the block as being processed, and another one with low-priority that
+	 * runs after all other post-processors).
+	 * Now if we see that no blocks are being post-processed, it can mean 2 things :
+	 *  - either we are between blocks
+	 *  - or we finished rendering the view
+	 * On the premise that the time that elapses between the post-processing of consecutive blocks is always very
+	 * short (just iteration, no work is done), we conclude that the render is finished if no block has been
+	 * rendered for enough time.
+	 */
+	private async untilRendered() {
+		while (ppIsProcessing || Date.now() - ppLastBlockDate < this.optionRenderSettlingDelay) {
+			if (ppLastBlockDate === 0) {
+				break;
+			}
+			await delay(20);
+		}
+	}
 
-    /**
-     * Replace span.internal-embed elements with the files / documents they link to. Images are not transformed
-     * into data uris at this stage.
-     */
-    private async replaceEmbeds(rootNode: HTMLElement): Promise<void> {
-        for (const node of Array.from(rootNode.querySelectorAll('.internal-embed'))) {
-            const src = node.getAttr('src');
-            const alt = node.getAttr('alt');
+	/**
+	 * Replace span.internal-embed elements with the files / documents they link to. Images are not transformed
+	 * into data uris at this stage.
+	 */
+	private async replaceEmbeds(rootNode: HTMLElement): Promise<void> {
+		for (const node of Array.from(rootNode.querySelectorAll('.internal-embed'))) {
+			const src = node.getAttr('src');
+			const alt = node.getAttr('alt');
 
-            if (!src) {
-                node.remove();
-                continue;
-            }
+			if (!src) {
+				node.remove();
+				continue;
+			}
 
-            const extension = this.getExtension(src);
-            if (extension === '' || extension === 'md') {
-                const file = this.getEmbeddedFile(src);
-                if (file) {
-                    // Not recursively rendering the embedded elements here. If someone turns up with a need for
-                    // this it should be easy to adapt this.
-                    const markdown = await this.app.vault.cachedRead(file);
-                    await MarkdownRenderer.renderMarkdown(markdown, node as HTMLElement, file.path, this.view)
-                }
-            } else if (this.imageExtensions.includes(extension)) {
-                const file = this.getEmbeddedFile(src);
-                if (file) {
-                    const replacement = document.createElement('img');
-                    replacement.setAttribute('src', `${this.vaultUriPrefix}/${file.path}`);
+			const extension = this.getExtension(src);
+			if (extension === '' || extension === 'md') {
+				const file = this.getEmbeddedFile(src);
+				if (file) {
+					// Not recursively rendering the embedded elements here. If someone turns up with a need for
+					// this it should be easy to adapt this.
+					const markdown = await this.app.vault.cachedRead(file);
+					await MarkdownRenderer.renderMarkdown(markdown, node as HTMLElement, file.path, this.view)
+				}
+			} else if (this.imageExtensions.includes(extension)) {
+				const file = this.getEmbeddedFile(src);
+				if (file) {
+					const replacement = document.createElement('img');
+					replacement.setAttribute('src', `${this.vaultUriPrefix}/${file.path}`);
 
-                    if (alt) {
-                        replacement.setAttribute('alt', alt);
-                    }
+					if (alt) {
+						replacement.setAttribute('alt', alt);
+					}
 
-                    node.replaceWith(replacement);
-                }
-            } else {
-                // Not handling video, audio, ... on purpose
-                node.remove();
-            }
-        }
-    }
+					node.replaceWith(replacement);
+				}
+			} else {
+				// Not handling video, audio, ... on purpose
+				node.remove();
+			}
+		}
+	}
 
-    /**
-     * Get a TFile from its `src` attribute of a `.linked-embed`, or undefined if not found or not a file.
-     */
-    private getEmbeddedFile(src: string): TFile | undefined {
-        // TODO: this is messy : I agree Oliver Balfour :D
-        const subfolder = src.substring(this.vaultPath.length);
-        const file = this.app.metadataCache.getFirstLinkpathDest(src, subfolder);
-        if (!file) {
-            console.error(`Could not load ${src}, not found in metadataCache`);
-            return undefined;
-        }
+	/**
+	 * Get a TFile from its `src` attribute of a `.linked-embed`, or undefined if not found or not a file.
+	 */
+	private getEmbeddedFile(src: string): TFile | undefined {
+		// TODO: this is messy : I agree Oliver Balfour :D
+		const subfolder = src.substring(this.vaultPath.length);
+		const file = this.app.metadataCache.getFirstLinkpathDest(src, subfolder);
+		if (!file) {
+			console.error(`Could not load ${src}, not found in metadataCache`);
+			return undefined;
+		}
 
-        if (!(file instanceof TFile)) {
-            console.error(`Embedded element '${src}' is not a file`);
-            return undefined;
-        }
+		if (!(file instanceof TFile)) {
+			console.error(`Embedded element '${src}' is not a file`);
+			return undefined;
+		}
 
-        return file as TFile;
-    }
+		return file as TFile;
+	}
 
-    /**
-     * Transform rendered markdown to clean it up and embed images
-     */
-    private async transformHTML(element: HTMLElement): Promise<HTMLElement> {
-        // Remove styling which forces the preview to fill the window vertically
-        // @ts-ignore
-        const node: HTMLElement = element.cloneNode(true);
-        node.removeAttribute('style');
+	/**
+	 * Transform rendered markdown to clean it up and embed images
+	 */
+	private async transformHTML(element: HTMLElement): Promise<HTMLElement> {
+		// Remove styling which forces the preview to fill the window vertically
+		// @ts-ignore
+		const node: HTMLElement = element.cloneNode(true);
+		node.removeAttribute('style');
 
-        if (this.options.removeFrontMatter) {
-            this.removeFrontMatter(node);
-        }
-        this.makeCheckboxesReadOnly(node);
-        this.removeCollapseIndicators(node);
-        this.removeButtons(node);
-        await this.embedImages(node);
-        await this.renderSvg(node);
-        return node;
-    }
+		if (this.options.removeFrontMatter) {
+			this.removeFrontMatter(node);
+		}
+		this.makeCheckboxesReadOnly(node);
+		this.removeCollapseIndicators(node);
+		this.removeButtons(node);
+		await this.embedImages(node);
+		await this.renderSvg(node);
+		return node;
+	}
 
-    /** Remove front-matter */
-    private removeFrontMatter(node: HTMLElement) {
-        node.querySelectorAll('.frontmatter, .frontmatter-container')
-            .forEach(node => node.remove());
-    }
+	/** Remove front-matter */
+	private removeFrontMatter(node: HTMLElement) {
+		node.querySelectorAll('.frontmatter, .frontmatter-container')
+			.forEach(node => node.remove());
+	}
 
-    private makeCheckboxesReadOnly(node: HTMLElement) {
-        node.querySelectorAll('input[type="checkbox"]')
-            .forEach(node => node.setAttribute('disabled', 'disabled'));
-    }
+	private makeCheckboxesReadOnly(node: HTMLElement) {
+		node.querySelectorAll('input[type="checkbox"]')
+			.forEach(node => node.setAttribute('disabled', 'disabled'));
+	}
 
-    /** Remove the collapse indicators from HTML, not needed (and not working) in copy */
-    private removeCollapseIndicators(node: HTMLElement) {
-        node.querySelectorAll('.collapse-indicator')
-            .forEach(node => node.remove());
-    }
+	/** Remove the collapse indicators from HTML, not needed (and not working) in copy */
+	private removeCollapseIndicators(node: HTMLElement) {
+		node.querySelectorAll('.collapse-indicator')
+			.forEach(node => node.remove());
+	}
 
-    /** Remove button elements (which appear after code blocks) */
-    private removeButtons(node: HTMLElement) {
-        node.querySelectorAll('button')
-            .forEach(node => node.remove());
-    }
+	/** Remove button elements (which appear after code blocks) */
+	private removeButtons(node: HTMLElement) {
+		node.querySelectorAll('button')
+			.forEach(node => node.remove());
+	}
 
-    /** Replace all images sources with a data-uri */
-    private async embedImages(node: HTMLElement): Promise<HTMLElement> {
-        const promises: Promise<void>[] = [];
+	/** Replace all images sources with a data-uri */
+	private async embedImages(node: HTMLElement): Promise<HTMLElement> {
+		const promises: Promise<void>[] = [];
 
-        // Replace all image sources
-        node.querySelectorAll('img')
-            .forEach(img => {
-                if (img.src) {
-                    if (img.src.startsWith('data:image/svg+xml') && this.options.convertSvgToBitmap) {
-                        // image is an SVG, encoded as a data uri. This is the case with Excalidraw for instance.
-                        // Convert it to bitmap
-                        promises.push(this.replaceImageSource(img));
-                    } else if (!img.src.startsWith('data:')) {
-                        // render bitmaps, except if already as data-uri
-                        promises.push(this.replaceImageSource(img));
-                    }
-                }
-            });
+		// Replace all image sources
+		node.querySelectorAll('img')
+			.forEach(img => {
+				if (img.src) {
+					if (img.src.startsWith('data:image/svg+xml') && this.options.convertSvgToBitmap) {
+						// image is an SVG, encoded as a data uri. This is the case with Excalidraw for instance.
+						// Convert it to bitmap
+						promises.push(this.replaceImageSource(img));
+					} else if (!img.src.startsWith('data:')) {
+						// render bitmaps, except if already as data-uri
+						promises.push(this.replaceImageSource(img));
+					}
+				}
+			});
 
-        if (this.modal && this.modal.progress) {
-            // @ts-ignore
-            this.modal.progress.max = 100;
+		if (this.modal && this.modal.progress) {
+			// @ts-ignore
+			this.modal.progress.max = 100;
 
-            // @ts-ignore
-            await allWithProgress(promises, percentCompleted => this.modal.progress.value = percentCompleted);
-        }
+			// @ts-ignore
+			await allWithProgress(promises, percentCompleted => this.modal.progress.value = percentCompleted);
+		}
 
-        return node;
-    }
+		return node;
+	}
 
-    private async renderSvg(node: HTMLElement): Promise<Element> {
-        if (!this.options.convertSvgToBitmap) {
-            return node;
-        }
+	private async renderSvg(node: HTMLElement): Promise<Element> {
+		if (!this.options.convertSvgToBitmap) {
+			return node;
+		}
 
-        const promises: Promise<void>[] = [];
+		const promises: Promise<void>[] = [];
 
-        const replaceSvg = async (svg: SVGSVGElement) => {
-            let style: HTMLStyleElement = svg.querySelector('style') || svg.appendChild(document.createElement('style'));
-            style.innerHTML += MERMAID_STYLESHEET;
+		const replaceSvg = async (svg: SVGSVGElement) => {
+			let style: HTMLStyleElement = svg.querySelector('style') || svg.appendChild(document.createElement('style'));
+			style.innerHTML += MERMAID_STYLESHEET;
 
-            const svgData = `data:image/svg+xml;base64,` + Buffer.from(svg.outerHTML).toString('base64');
-            const dataUri = await this.imageToDataUri(svgData);
+			const svgData = `data:image/svg+xml;base64,` + Buffer.from(svg.outerHTML).toString('base64');
+			const dataUri = await this.imageToDataUri(svgData);
 
-            const img = svg.createEl('img');
-            img.style.cssText = svg.style.cssText;
-            img.src = dataUri;
+			const img = svg.createEl('img');
+			img.style.cssText = svg.style.cssText;
+			img.src = dataUri;
 
-            svg.parentElement!.replaceChild(img, svg);
-        };
+			svg.parentElement!.replaceChild(img, svg);
+		};
 
-        node.querySelectorAll('svg')
-            .forEach(svg => {
-                promises.push(replaceSvg(svg));
-            });
+		node.querySelectorAll('svg')
+			.forEach(svg => {
+				promises.push(replaceSvg(svg));
+			});
 
-        // @ts-ignore
-        this.modal.progress.max = 0;
+		// @ts-ignore
+		this.modal.progress.max = 0;
 
-        // @ts-ignore
-        await allWithProgress(promises, percentCompleted => this.modal.progress.value = percentCompleted);
-        return node;
-    }
+		// @ts-ignore
+		await allWithProgress(promises, percentCompleted => this.modal.progress.value = percentCompleted);
+		return node;
+	}
 
-    /** replace image src attribute with data uri */
-    private async replaceImageSource(image: HTMLImageElement): Promise<void> {
-        const imageSourcePath = decodeURI(image.src);
+	/** replace image src attribute with data uri */
+	private async replaceImageSource(image: HTMLImageElement): Promise<void> {
+		const imageSourcePath = decodeURI(image.src);
 
-        if (imageSourcePath.startsWith(this.vaultUriPrefix)) {
-            // Transform uri to Obsidian relative path
-            let path = imageSourcePath.substring(this.vaultUriPrefix.length + 1)
-                .replace(/[?#].*/, '');
-            path = decodeURI(path);
+		if (imageSourcePath.startsWith(this.vaultUriPrefix)) {
+			// Transform uri to Obsidian relative path
+			let path = imageSourcePath.substring(this.vaultUriPrefix.length + 1)
+				.replace(/[?#].*/, '');
+			path = decodeURI(path);
 
-            const mimeType = this.guessMimeType(path);
-            const data = await this.readFromVault(path, mimeType);
+			const mimeType = this.guessMimeType(path);
+			const data = await this.readFromVault(path, mimeType);
 
-            if (this.isSvg(mimeType) && this.options.convertSvgToBitmap) {
-                // render svg to bitmap for compatibility w/ for instance gmail
-                image.src = await this.imageToDataUri(data);
-            } else {
-                // file content as base64 data uri (including svg)
-                image.src = data;
-            }
-        } else {
-            // Attempt to render uri to canvas. This is not an uri that points to the vault. Not needed for public
-            // urls, but we may have un uri that points to our local machine or network, that will not be accessible
-            // wherever we intend to paste the document.
-            image.src = await this.imageToDataUri(image.src);
-        }
-    }
+			if (this.isSvg(mimeType) && this.options.convertSvgToBitmap) {
+				// render svg to bitmap for compatibility w/ for instance gmail
+				image.src = await this.imageToDataUri(data);
+			} else {
+				// file content as base64 data uri (including svg)
+				image.src = data;
+			}
+		} else {
+			// Attempt to render uri to canvas. This is not an uri that points to the vault. Not needed for public
+			// urls, but we may have un uri that points to our local machine or network, that will not be accessible
+			// wherever we intend to paste the document.
+			image.src = await this.imageToDataUri(image.src);
+		}
+	}
 
-    /**
-     * Draw image url to canvas and return as data uri containing image pixel data
-     */
-    private async imageToDataUri(url: string): Promise<string> {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
+	/**
+	 * Draw image url to canvas and return as data uri containing image pixel data
+	 */
+	private async imageToDataUri(url: string): Promise<string> {
+		const canvas = document.createElement('canvas');
+		const ctx = canvas.getContext('2d');
 
-        const image = new Image();
-        image.setAttribute('crossOrigin', 'anonymous');
+		const image = new Image();
+		image.setAttribute('crossOrigin', 'anonymous');
 
-        const dataUriPromise = new Promise<string>((resolve, reject) => {
-            image.onload = () => {
-                canvas.width = image.naturalWidth;
-                canvas.height = image.naturalHeight;
+		const dataUriPromise = new Promise<string>((resolve, reject) => {
+			image.onload = () => {
+				canvas.width = image.naturalWidth;
+				canvas.height = image.naturalHeight;
 
-                ctx!.drawImage(image, 0, 0);
+				ctx!.drawImage(image, 0, 0);
 
-                try {
-                    const uri = canvas.toDataURL('image/png');
-                    resolve(uri);
-                } catch (err) {
-                    // leave error at `log` level (not `error`), since we leave an url that may be workable
-                    console.log(`failed ${url}`, err);
-                    // if we fail, leave the original url.
-                    // This way images that we may not load from external sources (tainted) may still be accessed
-                    // (eg. plantuml)
-                    // TODO: should we attempt to fallback with fetch ?
-                    resolve(url);
-                }
+				try {
+					const uri = canvas.toDataURL('image/png');
+					resolve(uri);
+				} catch (err) {
+					// leave error at `log` level (not `error`), since we leave an url that may be workable
+					console.log(`failed ${url}`, err);
+					// if we fail, leave the original url.
+					// This way images that we may not load from external sources (tainted) may still be accessed
+					// (eg. plantuml)
+					// TODO: should we attempt to fallback with fetch ?
+					resolve(url);
+				}
 
-                canvas.remove();
-            }
-        })
+				canvas.remove();
+			}
+		})
 
-        image.src = url;
+		image.src = url;
 
-        return dataUriPromise;
-    }
+		return dataUriPromise;
+	}
 
-    /**
-     * Get binary data as b64 from a file in the vault
-     */
-    private async readFromVault(path: string, mimeType: string): Promise<string> {
-        const tfile = this.app.vault.getAbstractFileByPath(path) as TFile;
-        const data = await this.app.vault.readBinary(tfile);
-        return `data:${mimeType};base64,` + arrayBufferToBase64(data);
-    }
+	/**
+	 * Get binary data as b64 from a file in the vault
+	 */
+	private async readFromVault(path: string, mimeType: string): Promise<string> {
+		const tfile = this.app.vault.getAbstractFileByPath(path) as TFile;
+		const data = await this.app.vault.readBinary(tfile);
+		return `data:${mimeType};base64,` + arrayBufferToBase64(data);
+	}
 
-    /** Guess an image's mime-type based on its extension */
-    private guessMimeType(filePath: string): string {
-        const extension = this.getExtension(filePath) || 'png';
-        return this.mimeMap.get(extension) || `image/${extension}`;
-    }
+	/** Guess an image's mime-type based on its extension */
+	private guessMimeType(filePath: string): string {
+		const extension = this.getExtension(filePath) || 'png';
+		return this.mimeMap.get(extension) || `image/${extension}`;
+	}
 
-    /** Get lower-case extension for a path */
-    private getExtension(filePath: string): string {
-        // avoid using the "path" library
-        const fileName = filePath.slice(filePath.lastIndexOf('/') + 1);
-        return fileName.slice(fileName.lastIndexOf('.') + 1 || fileName.length)
-            .toLowerCase();
-    }
+	/** Get lower-case extension for a path */
+	private getExtension(filePath: string): string {
+		// avoid using the "path" library
+		const fileName = filePath.slice(filePath.lastIndexOf('/') + 1);
+		return fileName.slice(fileName.lastIndexOf('.') + 1 || fileName.length)
+			.toLowerCase();
+	}
 
-    private isSvg(mimeType: string): boolean {
-        return mimeType === 'image/svg+xml';
-    }
+	private isSvg(mimeType: string): boolean {
+		return mimeType === 'image/svg+xml';
+	}
 }
 
 /**
  * Modal to show progress during conversion
  */
 class CopyingToHtmlModal extends Modal {
-    constructor(app: App) {
-        super(app);
-    }
+	constructor(app: App) {
+		super(app);
+	}
 
-    private _progress: HTMLElement;
+	private _progress: HTMLElement;
 
-    get progress() {
-        return this._progress;
-    }
+	get progress() {
+		return this._progress;
+	}
 
-    onOpen() {
-        let {titleEl, contentEl} = this;
-        titleEl.setText('Copying to clipboard');
-        this._progress = contentEl.createEl('progress');
-        this._progress.style.width = '100%';
-    }
+	onOpen() {
+		let {titleEl, contentEl} = this;
+		titleEl.setText('Copying to clipboard');
+		this._progress = contentEl.createEl('progress');
+		this._progress.style.width = '100%';
+	}
 
-    onClose() {
-        let {contentEl} = this;
-        contentEl.empty();
-    }
+	onClose() {
+		let {contentEl} = this;
+		contentEl.empty();
+	}
 }
 
 /**
  * Settings dialog
  */
 class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
-    constructor(app: App, private plugin: CopyDocumentAsHTMLPlugin) {
-        super(app, plugin);
-        this.plugin = plugin;
-    }
+	constructor(app: App, private plugin: CopyDocumentAsHTMLPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
+	}
 
-    display(): void {
-        const {containerEl} = this;
+	display(): void {
+		const {containerEl} = this;
 
-        containerEl.empty();
+		containerEl.empty();
 
-        containerEl.createEl('h2', {text: 'Copy document as HTML - Settings'});
+		containerEl.createEl('h2', {text: 'Copy document as HTML - Settings'});
 
-        new Setting(containerEl)
-            .setName('Remove front-matter sections')
-            .setDesc("If checked, the YAML content between --- lines at the front of the document are removed. If you don't know what this means, leave it on.")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.removeFrontMatter)
-                .onChange(async (value) => {
-                    this.plugin.settings.removeFrontMatter = value;
-                    await this.plugin.saveSettings();
-                }));
+		new Setting(containerEl)
+			.setName('Remove front-matter sections')
+			.setDesc("If checked, the YAML content between --- lines at the front of the document are removed. If you don't know what this means, leave it on.")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.removeFrontMatter)
+				.onChange(async (value) => {
+					this.plugin.settings.removeFrontMatter = value;
+					await this.plugin.saveSettings();
+				}));
 
-        new Setting(containerEl)
-            .setName('Convert SVG files to bitmap')
-            .setDesc('If checked, SVG files are converted to bitmap. This makes the copied documents heavier but improves compatibility (eg. with gmail).')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.convertSvgToBitmap)
-                .onChange(async (value) => {
-                    this.plugin.settings.convertSvgToBitmap = value;
-                    await this.plugin.saveSettings();
-                }));
+		new Setting(containerEl)
+			.setName('Convert SVG files to bitmap')
+			.setDesc('If checked, SVG files are converted to bitmap. This makes the copied documents heavier but improves compatibility (eg. with gmail).')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.convertSvgToBitmap)
+				.onChange(async (value) => {
+					this.plugin.settings.convertSvgToBitmap = value;
+					await this.plugin.saveSettings();
+				}));
 
-        const useCustomStylesheetSetting = new Setting(containerEl)
-            .setName('Provide a custom stylesheet')
-            .setDesc('The default stylesheet provides minimalistic theming. You may want to customize it for better looks.');
+		const useCustomStylesheetSetting = new Setting(containerEl)
+			.setName('Provide a custom stylesheet')
+			.setDesc('The default stylesheet provides minimalistic theming. You may want to customize it for better looks.');
 
-        const customStylesheetSetting = new Setting(containerEl)
-            .setName('Custom stylesheet')
-            .setDesc('Disabling the setting above will replace the custom stylesheet with the default.')
-            .setClass('custom-css-setting')
-            .addTextArea(textArea => textArea
-                .setValue(this.plugin.settings.styleSheet)
-                .onChange(async (value) => {
-                    this.plugin.settings.styleSheet = value;
-                    await this.plugin.saveSettings();
-                }));
+		const customStylesheetSetting = new Setting(containerEl)
+			.setName('Custom stylesheet')
+			.setDesc('Disabling the setting above will replace the custom stylesheet with the default.')
+			.setClass('custom-css-setting')
+			.addTextArea(textArea => textArea
+				.setValue(this.plugin.settings.styleSheet)
+				.onChange(async (value) => {
+					this.plugin.settings.styleSheet = value;
+					await this.plugin.saveSettings();
+				}));
 
-        useCustomStylesheetSetting.addToggle(toggle => {
-            customStylesheetSetting.settingEl.toggle(this.plugin.settings.useCustomStylesheet);
+		useCustomStylesheetSetting.addToggle(toggle => {
+			customStylesheetSetting.settingEl.toggle(this.plugin.settings.useCustomStylesheet);
 
-            toggle
-                .setValue(this.plugin.settings.useCustomStylesheet)
-                .onChange(async (value) => {
-                    this.plugin.settings.useCustomStylesheet = value;
-                    customStylesheetSetting.settingEl.toggle(this.plugin.settings.useCustomStylesheet);
-                    if (!value) {
-                        this.plugin.settings.styleSheet = DEFAULT_STYLESHEET;
-                    }
-                    await this.plugin.saveSettings();
-                });
-        });
-    }
+			toggle
+				.setValue(this.plugin.settings.useCustomStylesheet)
+				.onChange(async (value) => {
+					this.plugin.settings.useCustomStylesheet = value;
+					customStylesheetSetting.settingEl.toggle(this.plugin.settings.useCustomStylesheet);
+					if (!value) {
+						this.plugin.settings.styleSheet = DEFAULT_STYLESHEET;
+					}
+					await this.plugin.saveSettings();
+				});
+		});
+	}
 }
 
 type CopyDocumentAsHTMLSettings = {
-    /** Remove front-matter */
-    removeFrontMatter: boolean;
+	/** Remove front-matter */
+	removeFrontMatter: boolean;
 
-    /** If set svg are converted to bitmap */
-    convertSvgToBitmap: boolean;
+	/** If set svg are converted to bitmap */
+	convertSvgToBitmap: boolean;
 
-    /** remember if the stylesheet was default or custom */
-    useCustomStylesheet: boolean;
+	/** remember if the stylesheet was default or custom */
+	useCustomStylesheet: boolean;
 
-    /** Style-sheet */
-    styleSheet: string;
+	/** Style-sheet */
+	styleSheet: string;
 }
 
 const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
-    removeFrontMatter: true,
-    convertSvgToBitmap: true,
-    useCustomStylesheet: false,
-    styleSheet: DEFAULT_STYLESHEET
+	removeFrontMatter: true,
+	convertSvgToBitmap: true,
+	useCustomStylesheet: false,
+	styleSheet: DEFAULT_STYLESHEET
 }
 
-
-
 export default class CopyDocumentAsHTMLPlugin extends Plugin {
-  settings: CopyDocumentAsHTMLSettings;
+	settings: CopyDocumentAsHTMLSettings;
   
-  async convertView(
-    view: MarkdownView,
-    options: { convertSvgToBitmap: boolean } = { convertSvgToBitmap: true }
-  ): Promise<HTMLElement> {
-    const renderer = new DocumentRenderer(view, app, options);
-    return await renderer.renderDocument(false);
-    }
+	/**
+	 * Convert a markdown view to an html element.
+	 * 
+	 * @param {MarkdownView} view The markdown view to convert
+	 * @param {{convertSvgToBitmap: boolean, removeFrontMatter: boolean}} options The options to pass to the converter.
+	 *
+	 * @returns A promise for an html element with the result of the markdown as html
+	 */
+	async convertView(
+		view: MarkdownView,
+		options: {
+			convertSvgToBitmap: boolean,
+			removeFrontMatter: boolean
+		} = {
+			convertSvgToBitmap: true,
+			removeFrontMatter: true
+		}
+	): Promise<HTMLElement> {
+		const renderer = new DocumentRenderer(view, app, options);
+		return await renderer.renderDocument(false);
+	}
 
-  async convertMarkdown(
-    markdown: string,
-    sourceFilePath: string | undefined = undefined,
-    options: { convertSvgToBitmap: boolean } = { convertSvgToBitmap: true }
-    ): Promise<HTMLElement> {
-        let result;
-        let leaf = app.workspace.getLeaf(true);
-        try {
-            const file = sourceFilePath
-                ? this.app.vault.getAbstractFileByPath(sourceFilePath) as TFile
-                : null;
-            if (file) {
-                await leaf.openFile(file, { active: false });
-                (leaf.view as MarkdownView).file = file;
-            } else {
-                (leaf.view as MarkdownView).file = { path: "" } as TFile;
-            }
-            (leaf.view as MarkdownView).data = markdown;
+	/**
+	 * Convert a raw markdown string to an html element.
+	 * This may cause tabs to open and close in the background, this is nessicary to render the items property without using the current view.
+	 * 
+	 * @param {string} markdown The raw markdown content string to convert
+	 * @param {string | undefined} sourceFilePath The source file to use for fetching frontmatter, links, embeds, etc.
+	 * @param {{convertSvgToBitmap: boolean, removeFrontMatter: boolean}} options The options to pass to the converter.
+	 *
+	 * @returns A promise for an html element with the result of the markdown as html
+	 */
+	async convertMarkdown(
+		markdown: string,
+		sourceFilePath: string | undefined = undefined,
+		options: {
+			convertSvgToBitmap: boolean,
+			removeFrontMatter: boolean
+		} = {
+			convertSvgToBitmap: true,
+			removeFrontMatter: true
+		}
+	): Promise<HTMLElement> {
+		let result;
+		const leaf = app.workspace.getLeaf(true);
+		try {
+			const file = sourceFilePath
+				? this.app.vault.getAbstractFileByPath(sourceFilePath) as TFile
+				: null;
+			if (file) {
+				await leaf.openFile(file, { active: false });
+				(leaf.view as MarkdownView).file = file;
+			} else {
+				(leaf.view as MarkdownView).file = { path: "" } as TFile;
+			}
+			(leaf.view as MarkdownView).data = markdown;
 
-            result = await this.convertView(
-                leaf.view as MarkdownView
-            );
-        } finally {
-            leaf.detach();
-        }
+			result = await this.convertView(
+				leaf.view as MarkdownView,
+				options
+			);
+		} finally {
+			leaf.detach();
+		}
 
-    return result;
-  }
-    
-    async onload() {
-        await this.loadSettings();
+		return result;
+	}
+	
+	async onload() {
+		await this.loadSettings();
 
-        this.addCommand({
-            id: 'copy-as-html',
-            name: 'Copy current document to clipboard',
+		this.addCommand({
+			id: 'copy-as-html',
+			name: 'Copy current document to clipboard',
 
-            checkCallback: (checking: boolean): boolean => {
-                if (copyIsRunning) {
-                    console.log('Document is already being copied');
-                    return false;
-                }
+			checkCallback: (checking: boolean): boolean => {
+				if (copyIsRunning) {
+					console.log('Document is already being copied');
+					return false;
+				}
 
-                const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-                if (!activeView) {
-                    console.log('Nothing to copy: No active markdown view');
-                    return false;
-                }
+				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (!activeView) {
+					console.log('Nothing to copy: No active markdown view');
+					return false;
+				}
 
-                if (!checking) {
-                    this.doCopy(activeView);
-                }
+				if (!checking) {
+					this.doCopy(activeView);
+				}
 
-                return true;
-            },
-        });
+				return true;
+			},
+		});
 
-        // Register post-processors that keep track of the blocks being rendered. For explanation,
-        // @see DocumentRenderer#untilRendered()
+		// Register post-processors that keep track of the blocks being rendered. For explanation,
+		// @see DocumentRenderer#untilRendered()
 
-        const beforeAllPostProcessor = this.registerMarkdownPostProcessor(async () => {
-            ppIsProcessing = true;
-        });
-        beforeAllPostProcessor.sortOrder = -10000;
+		const beforeAllPostProcessor = this.registerMarkdownPostProcessor(async () => {
+			ppIsProcessing = true;
+		});
+		beforeAllPostProcessor.sortOrder = -10000;
 
-        const afterAllPostProcessor = this.registerMarkdownPostProcessor(async (_e, p) => {
-     // @ts-ignore
-            if (p.promises && p.promises.length) {
-                // @ts-ignore
-                Promise.all(p.promises).then(() => {
-                    ppIsProcessing = false;
-                    ppLastBlockDate = Date.now();
-                });
-            }
-        });
-        afterAllPostProcessor.sortOrder = 10000;
+		const afterAllPostProcessor = this.registerMarkdownPostProcessor(async (_e, p) => {
+			// @ts-ignore
+			if (p.promises && p.promises.length) {
+				// @ts-ignore
+				Promise.all(p.promises).then(() => {
+					ppIsProcessing = false;
+					ppLastBlockDate = Date.now();
+				});
+			}
+		});
+		afterAllPostProcessor.sortOrder = 10000;
 
-        // Register UI elements
-        this.addSettingTab(new CopyDocumentAsHTMLSettingsTab(this.app, this));
-        this.setupEditorMenuEntry();
-    }
+		// Register UI elements
+		this.addSettingTab(new CopyDocumentAsHTMLSettingsTab(this.app, this));
+		this.setupEditorMenuEntry();
+	}
 
-    async loadSettings() {
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+	async loadSettings() {
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 
-        // reload it so we may update it in a new release
-        if (!this.settings.useCustomStylesheet) {
-            this.settings.styleSheet = DEFAULT_STYLESHEET;
-        }
-    }
+		// reload it so we may update it in a new release
+		if (!this.settings.useCustomStylesheet) {
+			this.settings.styleSheet = DEFAULT_STYLESHEET;
+		}
+	}
 
-    async saveSettings() {
-        await this.saveData(this.settings);
-    }
+	async saveSettings() {
+		await this.saveData(this.settings);
+	}
 
-    private async doCopy(activeView: MarkdownView) {
-        console.log(`Copying "${activeView.file.path}" to clipboard...`);
-        const copier = new DocumentRenderer(activeView, this.app, {
-            convertSvgToBitmap: this.settings.convertSvgToBitmap,
-            removeFrontMatter: this.settings.removeFrontMatter
-        });
+	private async doCopy(activeView: MarkdownView) {
+		console.log(`Copying "${activeView.file.path}" to clipboard...`);
+		const copier = new DocumentRenderer(activeView, this.app, {
+			convertSvgToBitmap: this.settings.convertSvgToBitmap,
+			removeFrontMatter: this.settings.removeFrontMatter
+		});
 
-        try {
-            copyIsRunning = true;
+		try {
+			copyIsRunning = true;
 
-            ppLastBlockDate = Date.now();
-            ppIsProcessing = true;
+			ppLastBlockDate = Date.now();
+			ppIsProcessing = true;
 
-            const htmlBody = await copier.renderDocument();
-            const htmlDocument = htmlTemplate(this.settings.styleSheet, htmlBody.outerHTML, activeView.file.name);
+			const htmlBody = await copier.renderDocument();
+			const htmlDocument = htmlTemplate(this.settings.styleSheet, htmlBody.outerHTML, activeView.file.name);
 
-            const data =
-                new ClipboardItem({
-                    "text/html": new Blob([htmlDocument], {
-                        // @ts-ignore
-                        type: ["text/html", 'text/plain']
-                    }),
-                    "text/plain": new Blob([htmlDocument], {
-                        type: "text/plain"
-                    }),
-                });
+			const data =
+				new ClipboardItem({
+					"text/html": new Blob([htmlDocument], {
+						// @ts-ignore
+						type: ["text/html", 'text/plain']
+					}),
+					"text/plain": new Blob([htmlDocument], {
+						type: "text/plain"
+					}),
+				});
 
-            await navigator.clipboard.write([data]);
-            console.log('Copied document to clipboard');
-            new Notice('document copied to clipboard')
-        } catch (error) {
-            new Notice(`copy failed: ${error}`);
-            console.error('copy failed', error);
-        } finally {
-            copyIsRunning = false;
-        }
-    }
+			await navigator.clipboard.write([data]);
+			console.log('Copied document to clipboard');
+			new Notice('document copied to clipboard')
+		} catch (error) {
+			new Notice(`copy failed: ${error}`);
+			console.error('copy failed', error);
+		} finally {
+			copyIsRunning = false;
+		}
+	}
 
-    private setupEditorMenuEntry() {
-        this.registerEvent(
-            this.app.workspace.on("file-menu", (menu, file, view) => {
-                menu.addItem((item) => {
-                    item
-                        .setTitle("Copy as HTML")
-                        .setIcon("clipboard-copy")
-                        .onClick(async () => {
-                            // @ts-ignore
-                            this.app.commands.executeCommandById('copy-document-as-html:copy-as-html');
-                        });
-                });
-            })
-        );
-    }
+	private setupEditorMenuEntry() {
+		this.registerEvent(
+			this.app.workspace.on("file-menu", (menu, file, view) => {
+				menu.addItem((item) => {
+					item
+						.setTitle("Copy as HTML")
+						.setIcon("clipboard-copy")
+						.onClick(async () => {
+							// @ts-ignore
+							this.app.commands.executeCommandById('copy-document-as-html:copy-as-html');
+						});
+				});
+			})
+		);
+	}
 }
