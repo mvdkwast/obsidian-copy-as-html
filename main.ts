@@ -206,8 +206,8 @@ const htmlTemplate = (stylesheet: string, body: string, title: string) => `<html
 <head>
   <title>${title}</title>
   <style>
-    ${MERMAID_STYLESHEET}
-    ${stylesheet}
+	${MERMAID_STYLESHEET}
+	${stylesheet}
   </style>
 </head>
 <body>
@@ -249,13 +249,21 @@ class DocumentRenderer {
 	private readonly vaultPath: string;
 	private readonly vaultUriPrefix: string;
 
-	constructor(private view: MarkdownView, private app: App,
-				private options: { convertSvgToBitmap: boolean, removeFrontMatter: boolean } = {
-					convertSvgToBitmap: true,
-					removeFrontMatter: true
-				}) {
-		this.vaultPath = (this.app.vault.getRoot().vault.adapter as FileSystemAdapter).getBasePath()
-			.replace(/\\/g, '/');
+	constructor(
+		private view: MarkdownView,
+		private app: App,
+		private options: { convertSvgToBitmap: boolean, removeFrontMatter: boolean  } = {
+			convertSvgToBitmap: true,
+			removeFrontMatter: true
+		}
+	) {
+		const adapter = this.app.vault.getRoot().vault.adapter;
+		if (adapter instanceof FileSystemAdapter) {
+			this.vaultPath = adapter.getBasePath()
+				.replace(/\\/g, '/');
+		} else {
+			this.vaultPath = "";
+		}
 
 		this.vaultUriPrefix = `app://local/${this.vaultPath}`;
 	}
@@ -263,15 +271,20 @@ class DocumentRenderer {
 	/**
 	 * Render document into detached HTMLElement
 	 */
-	public async renderDocument(): Promise<HTMLElement> {
-		this.modal = new CopyingToHtmlModal(this.app);
-		this.modal.open();
+	public async renderDocument(showModal: boolean = true): Promise<HTMLElement> {
+		// show the modal?
+		if (showModal) {
+			this.modal = new CopyingToHtmlModal(this.app);
+			this.modal.open();
+		}
 
 		try {
 			const topNode = await this.renderMarkdown();
 			return await this.transformHTML(topNode!);
 		} finally {
-			this.modal.close();
+			if (showModal) {
+				this.modal.close();
+			}
 		}
 	}
 
@@ -444,11 +457,14 @@ class DocumentRenderer {
 				}
 			});
 
-		// @ts-ignore
-		this.modal.progress.max = 100;
+		if (this.modal && this.modal.progress) {
+			// @ts-ignore
+			this.modal.progress.max = 100;
 
-		// @ts-ignore
-		await allWithProgress(promises, percentCompleted => this.modal.progress.value = percentCompleted);
+			// @ts-ignore
+			await allWithProgress(promises, percentCompleted => this.modal.progress.value = percentCompleted);
+		}
+
 		return node;
 	}
 
@@ -699,7 +715,75 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 
 export default class CopyDocumentAsHTMLPlugin extends Plugin {
 	settings: CopyDocumentAsHTMLSettings;
+  
+	/**
+	 * Convert a markdown view to an html element.
+	 * 
+	 * @param {MarkdownView} view The markdown view to convert
+	 * @param {{convertSvgToBitmap: boolean, removeFrontMatter: boolean}} options The options to pass to the converter.
+	 *
+	 * @returns A promise for an html element with the result of the markdown as html
+	 */
+	async convertView(
+		view: MarkdownView,
+		options: {
+			convertSvgToBitmap: boolean,
+			removeFrontMatter: boolean
+		} = {
+			convertSvgToBitmap: true,
+			removeFrontMatter: true
+		}
+	): Promise<HTMLElement> {
+		const renderer = new DocumentRenderer(view, app, options);
+		return await renderer.renderDocument(false);
+	}
 
+	/**
+	 * Convert a raw markdown string to an html element.
+	 * This may cause tabs to open and close in the background, this is nessicary to render the items property without using the current view.
+	 * 
+	 * @param {string} markdown The raw markdown content string to convert
+	 * @param {string | undefined} sourceFilePath The source file to use for fetching frontmatter, links, embeds, etc.
+	 * @param {{convertSvgToBitmap: boolean, removeFrontMatter: boolean}} options The options to pass to the converter.
+	 *
+	 * @returns A promise for an html element with the result of the markdown as html
+	 */
+	async convertMarkdown(
+		markdown: string,
+		sourceFilePath: string | undefined = undefined,
+		options: {
+			convertSvgToBitmap: boolean,
+			removeFrontMatter: boolean
+		} = {
+			convertSvgToBitmap: true,
+			removeFrontMatter: true
+		}
+	): Promise<HTMLElement> {
+		let result;
+		const leaf = app.workspace.getLeaf(true);
+		try {
+			const file = sourceFilePath
+				? this.app.vault.getAbstractFileByPath(sourceFilePath) as TFile
+				: null;
+			if (file) {
+				await leaf.openFile(file, { active: false });
+				(leaf.view as MarkdownView).file = file;
+			} else {
+				(leaf.view as MarkdownView).file = { path: "" } as TFile;
+			}
+			(leaf.view as MarkdownView).data = markdown;
+
+			result = await this.convertView(
+				leaf.view as MarkdownView,
+				options
+			);
+		} finally {
+			leaf.detach();
+		}
+
+		return result;
+	}
+	
 	async onload() {
 		await this.loadSettings();
 
@@ -735,9 +819,15 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 		});
 		beforeAllPostProcessor.sortOrder = -10000;
 
-		const afterAllPostProcessor = this.registerMarkdownPostProcessor(async () => {
-			ppLastBlockDate = Date.now();
-			ppIsProcessing = false;
+		const afterAllPostProcessor = this.registerMarkdownPostProcessor(async (_e, p) => {
+			// @ts-ignore
+			if (p.promises && p.promises.length) {
+				// @ts-ignore
+				Promise.all(p.promises).then(() => {
+					ppIsProcessing = false;
+					ppLastBlockDate = Date.now();
+				});
+			}
 		});
 		afterAllPostProcessor.sortOrder = 10000;
 
