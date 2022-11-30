@@ -230,6 +230,19 @@ let ppLastBlockDate = Date.now();
 
 
 /**
+ * Options for DocumentRenderer
+ */
+type DocumentRendererOptions = {
+	convertSvgToBitmap: boolean,
+	removeFrontMatter: boolean,
+};
+
+const documentRendererDefaults = {
+	convertSvgToBitmap: true,
+	removeFrontMatter: true,
+}
+
+/**
  * Render markdown to DOM, with some clean-up and embed images as data uris.
  */
 class DocumentRenderer {
@@ -250,10 +263,8 @@ class DocumentRenderer {
 	private readonly vaultUriPrefix: string;
 
 	constructor(private view: MarkdownView, private app: App,
-				private options: { convertSvgToBitmap: boolean, removeFrontMatter: boolean } = {
-					convertSvgToBitmap: true,
-					removeFrontMatter: true
-				}) {
+				private options: DocumentRendererOptions = documentRendererDefaults)
+	{
 		this.vaultPath = (this.app.vault.getRoot().vault.adapter as FileSystemAdapter).getBasePath()
 			.replace(/\\/g, '/');
 
@@ -397,6 +408,7 @@ class DocumentRenderer {
 		this.makeCheckboxesReadOnly(node);
 		this.removeCollapseIndicators(node);
 		this.removeButtons(node);
+
 		await this.embedImages(node);
 		await this.renderSvg(node);
 		return node;
@@ -453,6 +465,8 @@ class DocumentRenderer {
 	}
 
 	private async renderSvg(node: HTMLElement): Promise<Element> {
+		const xmlSerializer = new XMLSerializer();
+
 		if (!this.options.convertSvgToBitmap) {
 			return node;
 		}
@@ -463,7 +477,9 @@ class DocumentRenderer {
 			let style: HTMLStyleElement = svg.querySelector('style') || svg.appendChild(document.createElement('style'));
 			style.innerHTML += MERMAID_STYLESHEET;
 
-			const svgData = `data:image/svg+xml;base64,` + Buffer.from(svg.outerHTML).toString('base64');
+			const svgAsString = xmlSerializer.serializeToString(svg);
+
+			const svgData = `data:image/svg+xml;base64,` + Buffer.from(svgAsString).toString('base64');
 			const dataUri = await this.imageToDataUri(svgData);
 
 			const img = svg.createEl('img');
@@ -545,6 +561,12 @@ class DocumentRenderer {
 				}
 
 				canvas.remove();
+			}
+
+			image.onerror = (err) => {
+				console.log('could not load data uri');
+				// if we fail, leave the original url
+				resolve(url);
 			}
 		})
 
@@ -763,7 +785,7 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 		console.log(`Copying "${activeView.file.path}" to clipboard...`);
 		const copier = new DocumentRenderer(activeView, this.app, {
 			convertSvgToBitmap: this.settings.convertSvgToBitmap,
-			removeFrontMatter: this.settings.removeFrontMatter
+			removeFrontMatter: this.settings.removeFrontMatter,
 		});
 
 		try {
