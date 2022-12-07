@@ -23,9 +23,8 @@ Currently working with :
 ### Advanced
 
 - It is possible to customize or replace the stylesheet in the settings dialog. 
-- The default is to convert SVG to bitmap for better compatibility at the cost of potential quality loss. If you know
-  that the application you are going to paste into has good .svg support, you can toggle the `Convert SVG to bitmap`
-  setting.
+- The default is to convert SVG to bitmap for better compatibility at the cost of potential quality loss. If you know that the application you are going to paste into has good .svg support, you can disable the `Convert SVG to bitmap` setting.
+- It is possible to render code and callouts to HTML tables. This makes them ugly except in Google Docs where they make the document slightly prettier. 
 
 ## Implementation
 
