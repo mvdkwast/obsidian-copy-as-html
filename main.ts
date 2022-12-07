@@ -80,14 +80,13 @@ table td {
   color: #222222;
 }
 
-.callout,
 .callout[data-callout="abstract"] .callout-title,
 .callout[data-callout="summary"] .callout-title,
 .callout[data-callout="tldr"]  .callout-title,
 .callout[data-callout="faq"] .callout-title,
 .callout[data-callout="info"] .callout-title,
 .callout[data-callout="help"] .callout-title {
-  background-color: #4355dbaa
+  background-color: #828ee7;
 }
 .callout[data-callout="tip"] .callout-title,
 .callout[data-callout="hint"] .callout-title,
@@ -178,6 +177,27 @@ ul.contains-task-list ul.contains-task-list {
 ul.contains-task-list li input[type="checkbox"] {
   margin-right: .5em;
 }
+
+.callout-table,
+.callout-table tr,
+.callout-table p {
+  width: 100%;
+  padding: 0;
+}
+
+.callout-table td {
+  width: 100%;
+  padding: 0 1em;
+}
+
+.callout-table p {
+  padding-bottom: 0.5em;
+}
+
+.source-table {
+  width: 100%;
+  background-color: #f5f5f5;
+}
 `;
 
 // Thank you again Olivier Balfour !
@@ -235,12 +255,14 @@ let ppLastBlockDate = Date.now();
 type DocumentRendererOptions = {
 	convertSvgToBitmap: boolean,
 	removeFrontMatter: boolean,
+	formatAsTables: boolean,
 };
 
 const documentRendererDefaults = {
 	convertSvgToBitmap: true,
 	removeFrontMatter: true,
-}
+	formatAsTables: false,
+};
 
 /**
  * Render markdown to DOM, with some clean-up and embed images as data uris.
@@ -409,6 +431,11 @@ class DocumentRenderer {
 		this.removeCollapseIndicators(node);
 		this.removeButtons(node);
 
+		if (this.options.formatAsTables) {
+			this.transformCodeToTables(node);
+			this.transformCalloutsToTables(node);
+		}
+
 		await this.embedImages(node);
 		await this.renderSvg(node);
 		return node;
@@ -435,6 +462,54 @@ class DocumentRenderer {
 	private removeButtons(node: HTMLElement) {
 		node.querySelectorAll('button')
 			.forEach(node => node.remove());
+	}
+
+	/** Transform code blocks to tables */
+	private transformCodeToTables(node: HTMLElement) {
+		node.querySelectorAll('pre')
+			.forEach(node => {
+				const codeEl = node.querySelector('code');
+				if (codeEl) {
+					const code = codeEl.innerHTML.replace(/\n*$/, '');
+					const table = node.parentElement!.createEl('table');
+					table.className = 'source-table';
+					table.innerHTML = `<tr><td><pre>${code}</pre></td></tr>`;
+					node.parentElement!.replaceChild(table, node);
+				}
+			});
+	}
+
+	/** Transform callouts to tables */
+	private transformCalloutsToTables(node: HTMLElement) {
+		node.querySelectorAll('.callout')
+			.forEach(node => {
+				const callout = node.parentElement!.createEl('table');
+				callout.addClass('callout-table', 'callout');
+				callout.setAttribute('data-callout', node.getAttribute('data-callout') ?? 'quote');
+				const headRow = callout.createEl('tr');
+				const headColumn = headRow.createEl('td');
+				headColumn.addClass('callout-title');
+				// const img = node.querySelector('svg');
+				const title = node.querySelector('.callout-title-inner');
+
+				// if (img) {
+				// 	headColumn.appendChild(img);
+				// }
+
+				if (title) {
+					const span = headColumn.createEl('span');
+					span.innerHTML = title.innerHTML;
+				}
+
+				const originalContent = node.querySelector('.callout-content');
+				if (originalContent) {
+					const row = callout.createEl('tr');
+					const column = row.createEl('td');
+					column.innerHTML = originalContent.innerHTML;
+				}
+
+				node.remove()
+			});
 	}
 
 	/** Replace all images sources with a data-uri */
@@ -666,6 +741,16 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		new Setting(containerEl)
+			.setName('Render some elements as tables')
+			.setDesc("If checked code blocks and callouts are rendered as tables, which makes pasting into Google docs somewhat prettier.")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.formatAsTables)
+				.onChange(async (value) => {
+					this.plugin.settings.formatAsTables = value;
+					await this.plugin.saveSettings();
+				}));
+
 		const useCustomStylesheetSetting = new Setting(containerEl)
 			.setName('Provide a custom stylesheet')
 			.setDesc('The default stylesheet provides minimalistic theming. You may want to customize it for better looks.');
@@ -705,6 +790,9 @@ type CopyDocumentAsHTMLSettings = {
 	/** If set svg are converted to bitmap */
 	convertSvgToBitmap: boolean;
 
+	/** Render some elements as tables */
+	formatAsTables: boolean;
+
 	/** remember if the stylesheet was default or custom */
 	useCustomStylesheet: boolean;
 
@@ -716,6 +804,7 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 	removeFrontMatter: true,
 	convertSvgToBitmap: true,
 	useCustomStylesheet: false,
+	formatAsTables: false,
 	styleSheet: DEFAULT_STYLESHEET
 }
 
@@ -783,10 +872,7 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 
 	private async doCopy(activeView: MarkdownView) {
 		console.log(`Copying "${activeView.file.path}" to clipboard...`);
-		const copier = new DocumentRenderer(activeView, this.app, {
-			convertSvgToBitmap: this.settings.convertSvgToBitmap,
-			removeFrontMatter: this.settings.removeFrontMatter,
-		});
+		const copier = new DocumentRenderer(activeView, this.app, this.settings);
 
 		try {
 			copyIsRunning = true;
