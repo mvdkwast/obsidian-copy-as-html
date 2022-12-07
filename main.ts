@@ -80,14 +80,13 @@ table td {
   color: #222222;
 }
 
-.callout,
 .callout[data-callout="abstract"] .callout-title,
 .callout[data-callout="summary"] .callout-title,
 .callout[data-callout="tldr"]  .callout-title,
 .callout[data-callout="faq"] .callout-title,
 .callout[data-callout="info"] .callout-title,
 .callout[data-callout="help"] .callout-title {
-  background-color: #4355dbaa
+  background-color: #828ee7;
 }
 .callout[data-callout="tip"] .callout-title,
 .callout[data-callout="hint"] .callout-title,
@@ -179,13 +178,25 @@ ul.contains-task-list li input[type="checkbox"] {
   margin-right: .5em;
 }
 
-.callout-table {
+.callout-table,
+.callout-table tr,
+.callout-table p {
   width: 100%;
+  padding: 0;
+}
+
+.callout-table td {
+  width: 100%;
+  padding: 0 1em;
+}
+
+.callout-table p {
+  padding-bottom: 0.5em;
 }
 
 .source-table {
   width: 100%;
-  background-color: #fafafa;
+  background-color: #f5f5f5;
 }
 `;
 
@@ -475,16 +486,15 @@ class DocumentRenderer {
 				const callout = node.parentElement!.createEl('table');
 				callout.addClass('callout-table', 'callout');
 				callout.setAttribute('data-callout', node.getAttribute('data-callout') ?? 'quote');
-				const head = callout.createTHead();
-				head.addClass('callout-title');
-				const headRow = head.createEl('tr');
+				const headRow = callout.createEl('tr');
 				const headColumn = headRow.createEl('td');
-				const img = node.querySelector('svg');
+				headColumn.addClass('callout-title');
+				// const img = node.querySelector('svg');
 				const title = node.querySelector('.callout-title-inner');
 
-				if (img) {
-					headColumn.appendChild(img);
-				}
+				// if (img) {
+				// 	headColumn.appendChild(img);
+				// }
 
 				if (title) {
 					const span = headColumn.createEl('span');
@@ -493,8 +503,7 @@ class DocumentRenderer {
 
 				const originalContent = node.querySelector('.callout-content');
 				if (originalContent) {
-					const body = callout.createTBody();
-					const row = body.createEl('tr');
+					const row = callout.createEl('tr');
 					const column = row.createEl('td');
 					column.innerHTML = originalContent.innerHTML;
 				}
@@ -734,7 +743,7 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Render some elements as tables')
-			.setDesc("If checked code blocks and callouts are rendered as tables, which makes pasting into Google docs prettier.")
+			.setDesc("If checked code blocks and callouts are rendered as tables, which makes pasting into Google docs somewhat prettier.")
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.formatAsTables)
 				.onChange(async (value) => {
