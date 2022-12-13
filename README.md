@@ -20,10 +20,11 @@ Currently working with :
 - ✅ Excalidraw - rendering as bitmap solves pasting in gmail
 - ✅ Mermaid
 
-### Advanced
+## Advanced
 
+- You may choose whether you want to embed external links (http, https) or not. If you don't (default), you will need internet access to view the document, and the linked image may be taken offline. If you do your documents will be larger.
 - It is possible to customize or replace the stylesheet in the settings dialog. 
-- The default is to convert SVG to bitmap for better compatibility at the cost of potential quality loss. If you know that the application you are going to paste into has good .svg support, you can disable the `Convert SVG to bitmap` setting.
+- The default is to convert SVG to bitmap for better compatibility at the cost of potential quality loss. If you know that you are pasting into an application with good .svg support, you can disable the `Convert SVG to bitmap` setting.
 - It is possible to render code and callouts to HTML tables. This makes them ugly except in Google Docs where they make the document slightly prettier. 
 
 ## Implementation

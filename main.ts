@@ -256,12 +256,14 @@ type DocumentRendererOptions = {
 	convertSvgToBitmap: boolean,
 	removeFrontMatter: boolean,
 	formatAsTables: boolean,
+	embedExternalLinks: boolean,
 };
 
 const documentRendererDefaults = {
 	convertSvgToBitmap: true,
 	removeFrontMatter: true,
 	formatAsTables: false,
+	embedExternalLinks: false,
 };
 
 /**
@@ -280,6 +282,8 @@ class DocumentRenderer {
 	]);
 
 	private readonly imageExtensions = ['gif', 'png', 'jpg', 'jpeg', 'bmp', 'png', 'webp', 'tiff', 'svg'];
+
+	private readonly externalSchemes = ['http', 'https'];
 
 	private readonly vaultPath: string;
 	private readonly vaultUriPrefix: string;
@@ -524,9 +528,24 @@ class DocumentRenderer {
 						// image is an SVG, encoded as a data uri. This is the case with Excalidraw for instance.
 						// Convert it to bitmap
 						promises.push(this.replaceImageSource(img));
-					} else if (!img.src.startsWith('data:')) {
+						return;
+					}
+
+					if (!this.options.embedExternalLinks) {
+						const [scheme] = img.src.split(':', 1);
+						if (this.externalSchemes.includes(scheme.toLowerCase())) {
+							// don't touch external images
+							return;
+						}
+						else {
+							// not an external image, continue processing below
+						}
+					}
+
+					if (!img.src.startsWith('data:')) {
 						// render bitmaps, except if already as data-uri
 						promises.push(this.replaceImageSource(img));
+						return;
 					}
 				}
 			});
@@ -742,6 +761,16 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
+			.setName('Embed external images')
+			.setDesc('If checked, external images are downloaded and embedded. If unchecked, the resulting document may contain links to external resources')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.embedExternalLinks)
+				.onChange(async (value) => {
+					this.plugin.settings.embedExternalLinks = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
 			.setName('Render some elements as tables')
 			.setDesc("If checked code blocks and callouts are rendered as tables, which makes pasting into Google docs somewhat prettier.")
 			.addToggle(toggle => toggle
@@ -793,6 +822,9 @@ type CopyDocumentAsHTMLSettings = {
 	/** Render some elements as tables */
 	formatAsTables: boolean;
 
+	/** Embed external links (load them and embed their content) */
+	embedExternalLinks: boolean;
+
 	/** remember if the stylesheet was default or custom */
 	useCustomStylesheet: boolean;
 
@@ -804,6 +836,7 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 	removeFrontMatter: true,
 	convertSvgToBitmap: true,
 	useCustomStylesheet: false,
+	embedExternalLinks: false,
 	formatAsTables: false,
 	styleSheet: DEFAULT_STYLESHEET
 }
