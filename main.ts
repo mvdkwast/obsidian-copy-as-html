@@ -249,6 +249,20 @@ let ppIsProcessing = false;
 let ppLastBlockDate = Date.now();
 
 
+enum FootnoteHandling {
+	/** Remove references and links */
+	REMOVE_ALL,
+
+	/** Reference links to footnote using a unique id */
+	LEAVE_LINK,
+
+	/** Links are removed from reference and back-link from footnote */
+	REMOVE_LINK,
+
+	/** Footnote is moved to title attribute */
+	TITLE_ATTRIBUTE
+}
+
 /**
  * Options for DocumentRenderer
  */
@@ -258,6 +272,7 @@ type DocumentRendererOptions = {
 	formatAsTables: boolean,
 	embedExternalLinks: boolean,
 	removeDataviewMetadataLines: boolean,
+	footnoteHandling: FootnoteHandling,
 };
 
 const documentRendererDefaults = {
@@ -265,7 +280,8 @@ const documentRendererDefaults = {
 	removeFrontMatter: true,
 	formatAsTables: false,
 	embedExternalLinks: false,
-	removeDataviewMetadataLines: false
+	removeDataviewMetadataLines: false,
+	footnoteHandling: FootnoteHandling.REMOVE_LINK
 };
 
 /**
@@ -457,6 +473,16 @@ class DocumentRenderer {
 			this.transformCalloutsToTables(node);
 		}
 
+		if (this.options.footnoteHandling == FootnoteHandling.REMOVE_ALL) {
+			this.removeAllFootnotes(node);
+		}
+		if (this.options.footnoteHandling == FootnoteHandling.REMOVE_LINK) {
+			this.removeFootnoteLinks(node);
+		}
+		else if (this.options.footnoteHandling == FootnoteHandling.TITLE_ATTRIBUTE) {
+			// not supported yet
+		}
+
 		await this.embedImages(node);
 		await this.renderSvg(node);
 		return node;
@@ -542,6 +568,34 @@ class DocumentRenderer {
 				}
 
 				node.remove()
+			});
+	}
+
+	/** Remove references to footnotes and the footnotes section */
+	private removeAllFootnotes(node: HTMLElement) {
+		node.querySelectorAll('section.footnotes')
+			.forEach(section => section.parentNode!.removeChild(section));
+
+		node.querySelectorAll('.footnote-link')
+			.forEach(link => {
+				const span = link.parentNode!.parentNode!.removeChild(link.parentNode!);
+			});
+	}
+
+	/** Keep footnotes and references, but remove links */
+	private removeFootnoteLinks(node: HTMLElement) {
+		node.querySelectorAll('.footnote-link')
+			.forEach(link => {
+				const text = link.getText();
+				if (text === '↩︎') {
+					// remove back-link
+					link.parentNode!.removeChild(link);
+				}
+				else {
+					// remove from reference
+					const span = link.parentNode!.createEl('span', {text: link.getText(), cls: 'footnote-link'})
+					link.parentNode!.replaceChild(span, link);
+				}
 			});
 	}
 
@@ -762,6 +816,10 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
+	// Thank you, Obsidian Tasks !
+	private static createFragmentWithHTML = (html: string) =>
+		createFragment((documentFragment) => (documentFragment.createDiv().innerHTML = html));
+
 	display(): void {
 		const {containerEl} = this;
 
@@ -816,14 +874,48 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Remove dataview metadata lines')
-			.setDesc("Remove lines that only contain dataview meta-data, eg. \"rating:: 9\". Metadata between square brackets is left intact. "
-				+ "Current limitations are that lines starting with a space are not removed, and lines that look like metadata in code blocks are removed if they don't start with a space")
+			.setDesc(CopyDocumentAsHTMLSettingsTab.createFragmentWithHTML(`
+				<p>Remove lines that only contain dataview meta-data, eg. \"rating:: 9\". Metadata between square brackets is left intact.</p>
+				<p>Current limitations are that lines starting with a space are not removed, and lines that look like metadata in code blocks are removed if they don't start with a space</p>`))
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.removeDataviewMetadataLines)
 				.onChange(async (value) => {
 					this.plugin.settings.removeDataviewMetadataLines = value;
 					await this.plugin.saveSettings();
 				}));
+
+		new Setting(containerEl)
+			.setName('Footnote handling')
+			.setDesc(CopyDocumentAsHTMLSettingsTab.createFragmentWithHTML(`
+				<ul>
+				  <li>Remove everything: Remove references and links.</li>
+				  <li>Display only: leave reference and foot-note, but don\'t display as a link.</li> 
+				  <li>Display and link: attempt to link the reference to the footnote, may not work depending on paste target.</li>
+				</ul>`)
+			)
+			.addDropdown(dropdown => dropdown
+				.addOption(FootnoteHandling.REMOVE_ALL.toString(), 'Remove everything')
+				.addOption(FootnoteHandling.REMOVE_LINK.toString(), 'Display only')
+				.addOption(FootnoteHandling.LEAVE_LINK.toString(), 'Display and link')
+				.setValue(this.plugin.settings.footnoteHandling.toString())
+				.onChange(async (value) => {
+					switch(value) {
+						case FootnoteHandling.TITLE_ATTRIBUTE.toString():
+							this.plugin.settings.footnoteHandling = FootnoteHandling.TITLE_ATTRIBUTE;
+							break;
+						case FootnoteHandling.REMOVE_ALL.toString():
+							this.plugin.settings.footnoteHandling = FootnoteHandling.REMOVE_ALL;
+							break;
+						case FootnoteHandling.REMOVE_LINK.toString():
+							this.plugin.settings.footnoteHandling = FootnoteHandling.REMOVE_LINK;
+							break;
+						case FootnoteHandling.LEAVE_LINK.toString():
+						default:
+							this.plugin.settings.footnoteHandling = FootnoteHandling.LEAVE_LINK;
+							break;
+					}
+				})
+			)
 
 		const useCustomStylesheetSetting = new Setting(containerEl)
 			.setName('Provide a custom stylesheet')
@@ -873,6 +965,9 @@ type CopyDocumentAsHTMLSettings = {
 	/** Remove dataview meta-data lines (format : `some-tag:: value` */
 	removeDataviewMetadataLines: boolean;
 
+	/** How are foot-notes displayed ? */
+	footnoteHandling: FootnoteHandling;
+
 	/** remember if the stylesheet was default or custom */
 	useCustomStylesheet: boolean;
 
@@ -887,6 +982,7 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 	embedExternalLinks: false,
 	removeDataviewMetadataLines: false,
 	formatAsTables: false,
+	footnoteHandling: FootnoteHandling.REMOVE_LINK,
 	styleSheet: DEFAULT_STYLESHEET
 }
 
