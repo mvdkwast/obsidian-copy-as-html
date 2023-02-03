@@ -431,6 +431,8 @@ class DocumentRenderer {
 		if (this.options.removeFrontMatter) {
 			this.removeFrontMatter(node);
 		}
+
+		this.replaceInternalLinks(node);
 		this.makeCheckboxesReadOnly(node);
 		this.removeCollapseIndicators(node);
 		this.removeButtons(node);
@@ -449,6 +451,18 @@ class DocumentRenderer {
 	private removeFrontMatter(node: HTMLElement) {
 		node.querySelectorAll('.frontmatter, .frontmatter-container')
 			.forEach(node => node.remove());
+	}
+
+	private replaceInternalLinks(node: HTMLElement) {
+		node.querySelectorAll('a.internal-link')
+			.forEach(node => {
+				console.log(node.getText());
+				const textNode = node.parentNode!.createEl('span');
+				textNode.innerText = node.getText();
+				textNode.className = 'internal-link';
+				node.parentNode!.replaceChild(textNode, node);
+				console.log(`replacing with`, textNode)
+			});
 	}
 
 	private makeCheckboxesReadOnly(node: HTMLElement) {
