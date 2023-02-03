@@ -257,6 +257,7 @@ type DocumentRendererOptions = {
 	removeFrontMatter: boolean,
 	formatAsTables: boolean,
 	embedExternalLinks: boolean,
+	removeDataviewMetadataLines: boolean,
 };
 
 const documentRendererDefaults = {
@@ -264,6 +265,7 @@ const documentRendererDefaults = {
 	removeFrontMatter: true,
 	formatAsTables: false,
 	embedExternalLinks: false,
+	removeDataviewMetadataLines: false
 };
 
 /**
@@ -318,10 +320,13 @@ class DocumentRenderer {
 	private async renderMarkdown(): Promise<HTMLElement> {
 		const inputFile = this.view.file;
 		const markdown = this.view.data;
+
+		const processedMarkdown = this.preprocessMarkdown(markdown);
+
 		const wrapper = document.createElement('div');
 		wrapper.style.display = 'hidden';
 		document.body.appendChild(wrapper);
-		await MarkdownRenderer.renderMarkdown(markdown, wrapper, inputFile.path, this.view);
+		await MarkdownRenderer.renderMarkdown(processedMarkdown, wrapper, inputFile.path, this.view);
 		await this.untilRendered();
 
 		await this.replaceEmbeds(wrapper);
@@ -329,6 +334,16 @@ class DocumentRenderer {
 		const result = wrapper.cloneNode(true) as HTMLElement;
 		document.body.removeChild(wrapper);
 		return result;
+	}
+
+	private preprocessMarkdown(markdown: string): string {
+		let processed = markdown;
+
+		if (this.options.removeFrontMatter) {
+			processed = processed.replace(/^[^ \t:#`<>][^:#`<>]+::.*$/gm, '');
+		}
+
+		return processed;
 	}
 
 	/**
@@ -752,17 +767,9 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl('h2', {text: 'Copy document as HTML - Settings'});
+		containerEl.createEl('h2', {text: 'Copy document as HTML Settings'});
 
-		new Setting(containerEl)
-			.setName('Remove front-matter sections')
-			.setDesc("If checked, the YAML content between --- lines at the front of the document are removed. If you don't know what this means, leave it on.")
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.removeFrontMatter)
-				.onChange(async (value) => {
-					this.plugin.settings.removeFrontMatter = value;
-					await this.plugin.saveSettings();
-				}));
+		containerEl.createEl('h3', {text: 'Compatibility'});
 
 		new Setting(containerEl)
 			.setName('Convert SVG files to bitmap')
@@ -784,6 +791,7 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+
 		new Setting(containerEl)
 			.setName('Render some elements as tables')
 			.setDesc("If checked code blocks and callouts are rendered as tables, which makes pasting into Google docs somewhat prettier.")
@@ -791,6 +799,29 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.formatAsTables)
 				.onChange(async (value) => {
 					this.plugin.settings.formatAsTables = value;
+					await this.plugin.saveSettings();
+				}));
+
+		containerEl.createEl('h3', {text: 'Rendering'});
+
+		new Setting(containerEl)
+			.setName('Remove front-matter sections')
+			.setDesc("If checked, the YAML content between --- lines at the front of the document are removed. If you don't know what this means, leave it on.")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.removeFrontMatter)
+				.onChange(async (value) => {
+					this.plugin.settings.removeFrontMatter = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Remove dataview metadata lines')
+			.setDesc("Remove lines that only contain dataview meta-data, eg. \"rating:: 9\". Metadata between square brackets is left intact. "
+				+ "Current limitations are that lines starting with a space are not removed, and lines that look like metadata in code blocks are removed if they don't start with a space")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.removeDataviewMetadataLines)
+				.onChange(async (value) => {
+					this.plugin.settings.removeDataviewMetadataLines = value;
 					await this.plugin.saveSettings();
 				}));
 
@@ -839,6 +870,9 @@ type CopyDocumentAsHTMLSettings = {
 	/** Embed external links (load them and embed their content) */
 	embedExternalLinks: boolean;
 
+	/** Remove dataview meta-data lines (format : `some-tag:: value` */
+	removeDataviewMetadataLines: boolean;
+
 	/** remember if the stylesheet was default or custom */
 	useCustomStylesheet: boolean;
 
@@ -851,6 +885,7 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 	convertSvgToBitmap: true,
 	useCustomStylesheet: false,
 	embedExternalLinks: false,
+	removeDataviewMetadataLines: false,
 	formatAsTables: false,
 	styleSheet: DEFAULT_STYLESHEET
 }
