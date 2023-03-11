@@ -404,11 +404,28 @@ class DocumentRenderer {
 
 			const extension = this.getExtension(src);
 			if (extension === '' || extension === 'md') {
-				const file = this.getEmbeddedFile(src);
+				let [file_name, heading] = src.split('#');
+				const file = this.getEmbeddedFile(file_name);
 				if (file) {
 					// Not recursively rendering the embedded elements here. If someone turns up with a need for
 					// this it should be easy to adapt this.
-					const markdown = await this.app.vault.cachedRead(file);
+					let markdown = await this.app.vault.cachedRead(file);
+					// If embedding links to a heading, only add the embedded section
+					if (heading) { 
+						heading = heading.split(" ").join("[ \|]+")
+						// Get the header level
+						let regex = new RegExp(`(#*) (?:\\[*${heading}\\]*[ ]*\\n)`);
+						let res = markdown.match(regex)
+						if (!res || res.length <= 1) break;
+						const h_level = res[1].length;
+						// Get everything until a header with the same or lower level appears in the text
+						regex = new RegExp(`#* (?:\\[*${heading}\\]*[ ]*\\n)((?:.|\\n(?!#{1,${h_level}} ))*)`);
+						res = markdown.match(regex);
+						if (!res || res.length <= 1) break;
+						markdown = res[1];
+					}
+					// remove link text
+					node.innerHTML = "";
 					await MarkdownRenderer.renderMarkdown(markdown, node as HTMLElement, file.path, this.view)
 				}
 			} else if (this.imageExtensions.includes(extension)) {
