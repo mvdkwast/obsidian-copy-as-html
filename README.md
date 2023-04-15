@@ -36,6 +36,7 @@ The plugin converts image references to data urls, so no references to the vault
 - No mobile support
 - Special fields (double-colon attributes, ...) are not removed. (front-matter is)
 - data-uris can use a lot of memory for big/many pictures
+- transclusions with block references are not supported (transclusions with headings are)
 
 ## Install
 
@@ -53,3 +54,4 @@ Please see the [Obsidian sample plugin](https://github.com/obsidianmd/obsidian-s
 some rendering issues.
 - TfTHacker for his [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin which makes beta-testing a breeze.
 - PJ Eby for his [Hot-reload](https://github.com/pjeby/hot-reload) plugins which makes plugin development fast and fun.
+- jkunczik for enabling transclusions to work with heading references
