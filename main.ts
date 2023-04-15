@@ -269,6 +269,7 @@ enum FootnoteHandling {
 type DocumentRendererOptions = {
 	convertSvgToBitmap: boolean,
 	removeFrontMatter: boolean,
+	removeLinkText: boolean,
 	formatAsTables: boolean,
 	embedExternalLinks: boolean,
 	removeDataviewMetadataLines: boolean,
@@ -278,6 +279,7 @@ type DocumentRendererOptions = {
 const documentRendererDefaults = {
 	convertSvgToBitmap: true,
 	removeFrontMatter: true,
+	removeLinkText: false,
 	formatAsTables: false,
 	embedExternalLinks: false,
 	removeDataviewMetadataLines: false,
@@ -402,30 +404,28 @@ class DocumentRenderer {
 				continue;
 			}
 
-			const extension = this.getExtension(src);
+			const { path, extension, heading, blockReference } = this.getLinkParts(src);
 			if (extension === '' || extension === 'md') {
-				let [file_name, heading] = src.split('#');
-				const file = this.getEmbeddedFile(file_name);
+				const file = this.getEmbeddedFile(path);
 				if (file) {
 					// Not recursively rendering the embedded elements here. If someone turns up with a need for
 					// this it should be easy to adapt this.
 					let markdown = await this.app.vault.cachedRead(file);
-					// If embedding links to a heading, only add the embedded section
-					if (heading) { 
-						heading = heading.split(" ").join("[ \|]+")
-						// Get the header level
-						let regex = new RegExp(`(#*) (?:\\[*${heading}\\]*[ ]*\\n)`);
-						let res = markdown.match(regex)
-						if (!res || res.length <= 1) break;
-						const h_level = res[1].length;
-						// Get everything until a header with the same or lower level appears in the text
-						regex = new RegExp(`#* (?:\\[*${heading}\\]*[ ]*\\n)((?:.|\\n(?!#{1,${h_level}} ))*)`);
-						res = markdown.match(regex);
-						if (!res || res.length <= 1) break;
-						markdown = res[1];
+
+					// If embedding links to a heading, only add the embedded section, default to the entire file
+					// if section not found
+					if (heading) {
+						markdown = this.extractSection(markdown, heading) ?? markdown;
 					}
+					else if (blockReference) {
+						// TODO: implement block-reference matching
+					}
+
 					// remove link text
-					node.innerHTML = "";
+					if (this.options.removeLinkText) {
+						node.innerHTML = "";
+					}
+
 					await MarkdownRenderer.renderMarkdown(markdown, node as HTMLElement, file.path, this.view)
 				}
 			} else if (this.imageExtensions.includes(extension)) {
@@ -465,6 +465,30 @@ class DocumentRenderer {
 		}
 
 		return file as TFile;
+	}
+
+	/**
+	 * Retrieve section starting at given heading from markdown. Return undefined if heading not found.
+	 */
+	private extractSection(markdown: string, heading: string) {
+		const escapedHeading = heading.split(" ").join("[ \|]+")
+		// Get the header level
+		const matchSectionStart = new RegExp(`(#*) (?:\\[*${escapedHeading}\\]*[ ]*\\n)`);
+		let res = markdown.match(matchSectionStart)
+		if (!res || res.length <= 1) {
+			return undefined;
+		}
+
+		const headingLevel = res[1].length;
+
+		// Get everything until a header with the same or lower level appears in the text
+		const matchSectionEnd = new RegExp(`#* (?:\\[*${escapedHeading}\\]*[ ]*\\n)((?:.|\\n(?!#{1,${headingLevel}} ))*)`);
+		res = markdown.match(matchSectionEnd);
+		if (!res || res.length <= 1) {
+			return undefined;
+		}
+
+		return res[1];
 	}
 
 	/**
@@ -792,6 +816,28 @@ class DocumentRenderer {
 			.toLowerCase();
 	}
 
+	/**
+	 * Split link path into components :
+	 * - path contains the filename
+	 * - extension is lower-cased
+	 * - heading is present if link ends with `#some-header`
+	 * - blockReference is present if link ends with `#^tag` (tag is a hex string)
+	 */
+	private getLinkParts(path: string): { path: string, extension: string, heading?: string, blockReference?: string} {
+		// split at right-most occurence
+		const hashIndex = path.lastIndexOf("#");
+		const [file, anchor] = hashIndex > 0
+			? [path.slice(0, hashIndex), path.slice(hashIndex+1)]
+			: [path, ''];
+
+		return {
+			path: file,
+			extension: this.getExtension(file),
+			heading: !anchor?.startsWith("^") ? anchor : undefined,
+			blockReference: anchor?.startsWith("^") ? anchor : undefined,
+		}
+	}
+
 	private isSvg(mimeType: string): boolean {
 		return mimeType === 'image/svg+xml';
 	}
@@ -890,6 +936,16 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
+			.setName('Remove link text')
+			.setDesc("If checked the title of the embedded markdown files is removed")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.removeLinkText)
+				.onChange(async (value) => {
+					this.plugin.settings.removeLinkText = value;
+					await this.plugin.saveSettings();
+				}))
+
+		new Setting(containerEl)
 			.setName('Remove dataview metadata lines')
 			.setDesc(CopyDocumentAsHTMLSettingsTab.createFragmentWithHTML(`
 				<p>Remove lines that only contain dataview meta-data, eg. \"rating:: 9\". Metadata between square brackets is left intact.</p>
@@ -970,6 +1026,9 @@ type CopyDocumentAsHTMLSettings = {
 	/** Remove front-matter */
 	removeFrontMatter: boolean;
 
+	/** Remove titles from embedded links */
+	removeLinkText: boolean;
+
 	/** If set svg are converted to bitmap */
 	convertSvgToBitmap: boolean;
 
@@ -994,6 +1053,7 @@ type CopyDocumentAsHTMLSettings = {
 
 const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 	removeFrontMatter: true,
+	removeLinkText: false,
 	convertSvgToBitmap: true,
 	useCustomStylesheet: false,
 	embedExternalLinks: false,
