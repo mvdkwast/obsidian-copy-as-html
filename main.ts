@@ -608,7 +608,7 @@ class DocumentRenderer {
 					column.innerHTML = originalContent.innerHTML;
 				}
 
-				node.remove()
+				node.replaceWith(callout);
 			});
 	}
 
