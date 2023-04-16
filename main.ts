@@ -508,6 +508,7 @@ class DocumentRenderer {
 		this.makeCheckboxesReadOnly(node);
 		this.removeCollapseIndicators(node);
 		this.removeButtons(node);
+		this.removeStrangeNewWorldsLinks(node);
 
 		if (this.options.formatAsTables) {
 			this.transformCodeToTables(node);
@@ -561,6 +562,12 @@ class DocumentRenderer {
 	/** Remove button elements (which appear after code blocks) */
 	private removeButtons(node: HTMLElement) {
 		node.querySelectorAll('button')
+			.forEach(node => node.remove());
+	}
+
+	/** Remove counters added by Strange New Worlds plugin (https://github.com/TfTHacker/obsidian42-strange-new-worlds) */
+	private removeStrangeNewWorldsLinks(node: HTMLElement) {
+		node.querySelectorAll('.snw-reference')
 			.forEach(node => node.remove());
 	}
 
