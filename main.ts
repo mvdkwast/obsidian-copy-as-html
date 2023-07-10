@@ -320,12 +320,12 @@ class DocumentRenderer {
 	/**
 	 * Render document into detached HTMLElement
 	 */
-	public async renderDocument(): Promise<HTMLElement> {
+	public async renderDocument(onlySelected: boolean): Promise<HTMLElement> {
 		this.modal = new CopyingToHtmlModal(this.app);
 		this.modal.open();
 
 		try {
-			const topNode = await this.renderMarkdown();
+			const topNode = await this.renderMarkdown(onlySelected);
 			return await this.transformHTML(topNode!);
 		} finally {
 			this.modal.close();
@@ -335,9 +335,9 @@ class DocumentRenderer {
 	/**
 	 * Render current view into HTMLElement, expanding embedded links
 	 */
-	private async renderMarkdown(): Promise<HTMLElement> {
+	private async renderMarkdown(onlySelected: boolean): Promise<HTMLElement> {
 		const inputFile = this.view.file;
-		const markdown = this.view.data;
+		const markdown = ((onlySelected) ? this.view.editor.getSelection() : this.view.data);
 
 		const processedMarkdown = this.preprocessMarkdown(markdown);
 
@@ -1093,11 +1093,33 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 				}
 
 				if (!checking) {
-					this.doCopy(activeView);
+					this.doCopy(activeView, false);
 				}
 
 				return true;
 			},
+		});
+		this.addCommand({
+			id: 'copy-selection-as-html',
+			name: 'Copy current selection to clipboard',
+			checkCallback: (checking: boolean): boolean => {
+				if (copyIsRunning) {
+						console.log('Selection is already being copied');
+						return false;
+					}
+
+					const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+					if (!activeView) {
+						console.log('Nothing to copy: No active markdown view');
+						return false;
+					}
+
+					if (!checking) {
+						this.doCopy(activeView, true);
+					}
+
+					return true;
+			}
 		});
 
 		// Register post-processors that keep track of the blocks being rendered. For explanation,
@@ -1132,7 +1154,7 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
-	private async doCopy(activeView: MarkdownView) {
+	private async doCopy(activeView: MarkdownView, onlySelected: boolean) {
 		console.log(`Copying "${activeView.file.path}" to clipboard...`);
 		const copier = new DocumentRenderer(activeView, this.app, this.settings);
 
@@ -1142,7 +1164,7 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 			ppLastBlockDate = Date.now();
 			ppIsProcessing = true;
 
-			const htmlBody = await copier.renderDocument();
+			const htmlBody = await copier.renderDocument(onlySelected);
 			const htmlDocument = htmlTemplate(this.settings.styleSheet, htmlBody.outerHTML, activeView.file.name);
 
 			const data =
@@ -1177,6 +1199,15 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 						.onClick(async () => {
 							// @ts-ignore
 							this.app.commands.executeCommandById('copy-document-as-html:copy-as-html');
+						});
+				});
+				menu.addItem((item) => {
+					item
+						.setTitle("Copy selection as HTML")
+						.setIcon("clipboard-copy")
+						.onClick(async () => {
+							// @ts-ignore
+							this.app.commands.executeCommandById('copy-document-as-html:copy-selection-as-html');
 						});
 				});
 			})
