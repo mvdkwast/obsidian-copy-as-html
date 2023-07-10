@@ -309,8 +309,7 @@ class DocumentRenderer {
 	private readonly vaultUriPrefix: string;
 
 	constructor(private view: MarkdownView, private app: App,
-				private options: DocumentRendererOptions = documentRendererDefaults)
-	{
+				private options: DocumentRendererOptions = documentRendererDefaults) {
 		this.vaultPath = (this.app.vault.getRoot().vault.adapter as FileSystemAdapter).getBasePath()
 			.replace(/\\/g, '/');
 
@@ -404,7 +403,7 @@ class DocumentRenderer {
 				continue;
 			}
 
-			const { path, extension, heading, blockReference } = this.getLinkParts(src);
+			const {path, extension, heading, blockReference} = this.getLinkParts(src);
 			if (extension === '' || extension === 'md') {
 				const file = this.getEmbeddedFile(path);
 				if (file) {
@@ -416,8 +415,7 @@ class DocumentRenderer {
 					// if section not found
 					if (heading) {
 						markdown = this.extractSection(markdown, heading) ?? markdown;
-					}
-					else if (blockReference) {
+					} else if (blockReference) {
 						// TODO: implement block-reference matching
 					}
 
@@ -520,8 +518,7 @@ class DocumentRenderer {
 		}
 		if (this.options.footnoteHandling == FootnoteHandling.REMOVE_LINK) {
 			this.removeFootnoteLinks(node);
-		}
-		else if (this.options.footnoteHandling == FootnoteHandling.TITLE_ATTRIBUTE) {
+		} else if (this.options.footnoteHandling == FootnoteHandling.TITLE_ATTRIBUTE) {
 			// not supported yet
 		}
 
@@ -638,8 +635,7 @@ class DocumentRenderer {
 				if (text === '↩︎') {
 					// remove back-link
 					link.parentNode!.removeChild(link);
-				}
-				else {
+				} else {
 					// remove from reference
 					const span = link.parentNode!.createEl('span', {text: link.getText(), cls: 'footnote-link'})
 					link.parentNode!.replaceChild(span, link);
@@ -667,8 +663,7 @@ class DocumentRenderer {
 						if (this.externalSchemes.includes(scheme.toLowerCase())) {
 							// don't touch external images
 							return;
-						}
-						else {
+						} else {
 							// not an external image, continue processing below
 						}
 					}
@@ -830,11 +825,11 @@ class DocumentRenderer {
 	 * - heading is present if link ends with `#some-header`
 	 * - blockReference is present if link ends with `#^tag` (tag is a hex string)
 	 */
-	private getLinkParts(path: string): { path: string, extension: string, heading?: string, blockReference?: string} {
+	private getLinkParts(path: string): { path: string, extension: string, heading?: string, blockReference?: string } {
 		// split at right-most occurence
 		const hashIndex = path.lastIndexOf("#");
 		const [file, anchor] = hashIndex > 0
-			? [path.slice(0, hashIndex), path.slice(hashIndex+1)]
+			? [path.slice(0, hashIndex), path.slice(hashIndex + 1)]
 			: [path, ''];
 
 		return {
@@ -979,7 +974,7 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 				.addOption(FootnoteHandling.LEAVE_LINK.toString(), 'Display and link')
 				.setValue(this.plugin.settings.footnoteHandling.toString())
 				.onChange(async (value) => {
-					switch(value) {
+					switch (value) {
 						case FootnoteHandling.TITLE_ATTRIBUTE.toString():
 							this.plugin.settings.footnoteHandling = FootnoteHandling.TITLE_ATTRIBUTE;
 							break;
@@ -1077,49 +1072,22 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 		await this.loadSettings();
 
 		this.addCommand({
+			id: 'smart-copy-as-html',
+			name: 'Copy selection or document to clipboard',
+			checkCallback: this.buildCheckCallback(
+				view => this.doCopy(view, view.editor.somethingSelected()))
+		})
+
+		this.addCommand({
 			id: 'copy-as-html',
-			name: 'Copy current document to clipboard',
-
-			checkCallback: (checking: boolean): boolean => {
-				if (copyIsRunning) {
-					console.log('Document is already being copied');
-					return false;
-				}
-
-				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (!activeView) {
-					console.log('Nothing to copy: No active markdown view');
-					return false;
-				}
-
-				if (!checking) {
-					this.doCopy(activeView, false);
-				}
-
-				return true;
-			},
+			name: 'Copy entire document to clipboard',
+			checkCallback: this.buildCheckCallback(view => this.doCopy(view, false))
 		});
+
 		this.addCommand({
 			id: 'copy-selection-as-html',
 			name: 'Copy current selection to clipboard',
-			checkCallback: (checking: boolean): boolean => {
-				if (copyIsRunning) {
-						console.log('Selection is already being copied');
-						return false;
-					}
-
-					const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-					if (!activeView) {
-						console.log('Nothing to copy: No active markdown view');
-						return false;
-					}
-
-					if (!checking) {
-						this.doCopy(activeView, true);
-					}
-
-					return true;
-			}
+			checkCallback: this.buildCheckCallback(view => this.doCopy(view, true))
 		});
 
 		// Register post-processors that keep track of the blocks being rendered. For explanation,
@@ -1154,6 +1122,27 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
+	private buildCheckCallback(action: (activeView: MarkdownView) => void) {
+		return (checking: boolean): boolean => {
+			if (copyIsRunning) {
+				console.log('Document is already being copied');
+				return false;
+			}
+
+			const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (!activeView) {
+				console.log('Nothing to copy: No active markdown view');
+				return false;
+			}
+
+			if (!checking) {
+				action(activeView);
+			}
+
+			return true;
+		}
+	}
+
 	private async doCopy(activeView: MarkdownView, onlySelected: boolean) {
 		console.log(`Copying "${activeView.file.path}" to clipboard...`);
 		const copier = new DocumentRenderer(activeView, this.app, this.settings);
@@ -1179,8 +1168,8 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 				});
 
 			await navigator.clipboard.write([data]);
-			console.log('Copied document to clipboard');
-			new Notice('document copied to clipboard')
+			console.log(`Copied ${onlySelected ? "selection" : "document"} to clipboard`);
+			new Notice(`${onlySelected ? "selection" : "document"} copied to clipboard`)
 		} catch (error) {
 			new Notice(`copy failed: ${error}`);
 			console.error('copy failed', error);
@@ -1195,6 +1184,15 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 				menu.addItem((item) => {
 					item
 						.setTitle("Copy as HTML")
+						.setIcon("clipboard-copy")
+						.onClick(async () => {
+							// @ts-ignore
+							this.app.commands.executeCommandById('copy-document-as-html:smart-copy-as-html');
+						});
+				});
+				menu.addItem((item) => {
+					item
+						.setTitle("Copy entire document as HTML")
 						.setIcon("clipboard-copy")
 						.onClick(async () => {
 							// @ts-ignore

@@ -2,13 +2,25 @@
 
 Plugin for [Obsidian](https://obsidian.md) that copies the current document to the clipboard, so it can be pasted into HTML aware application like gmail.
 
-This plugin exposes the `Copy document as HTML: Copy the current document to clipboard` command, which can be bound to a keyboard shortcut.
+This plugin exposes the `Copy document as HTML` command, which can be bound to keyboard shortcuts (see below).
 
 ![image](https://user-images.githubusercontent.com/2441349/202304790-aea2a29e-2ed8-4ba2-bfb6-caaeb823e6f0.png)
 
 ## Features
 
-Simple styling is applied to the document. 
+### Commands
+
+The commands can be bound to keyboard shortcuts from the hotkeys menu, or run using the commands menu (Ctrl+P)
+
+**Copy selection or document to clipboard** : If text is selected, it will copied as HTML into the clipboard. If no text
+is selected, the entire document is copied. This should probably be your default keyboard shortcut. (suggestion:
+`Ctrl+Shift+C`)
+
+**Copy entire document to clipboard** : Copy the entire document
+
+**Copy current selection to clipboard** : Copy the selected text only 
+
+### Media support
 
 Currently working with :
 
@@ -19,6 +31,10 @@ Currently working with :
 - ✅ obsidian-dataview - for large dataview blocks the content may not be complete
 - ✅ Excalidraw - rendering as bitmap solves pasting in gmail
 - ✅ Mermaid
+
+### Styling
+
+By default, simple styling is applied to the document. The stylesheet can be customized through the plugin settings.
 
 ## Advanced
 
@@ -37,6 +53,8 @@ The plugin converts image references to data urls, so no references to the vault
 - Special fields (double-colon attributes, ...) are not removed. (front-matter is)
 - data-uris can use a lot of memory for big/many pictures
 - transclusions with block references are not supported (transclusions with headings are)
+
+Also see the issues section on github.
 
 ## Install
 
