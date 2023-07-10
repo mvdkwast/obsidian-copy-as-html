@@ -1,6 +1,6 @@
 import {
 	App,
-	arrayBufferToBase64,
+	arrayBufferToBase64, Component,
 	FileSystemAdapter,
 	MarkdownRenderer,
 	MarkdownView,
@@ -8,7 +8,7 @@ import {
 	Notice,
 	Plugin,
 	PluginSettingTab,
-	Setting,
+	Setting, TAbstractFile,
 	TFile
 } from 'obsidian';
 
@@ -291,6 +291,7 @@ const documentRendererDefaults = {
  */
 class DocumentRenderer {
 	private modal: CopyingToHtmlModal;
+	private view: Component;
 
 	// time required after last block was rendered before we decide that rendering a view is completed
 	private optionRenderSettlingDelay: number = 100;
@@ -308,23 +309,26 @@ class DocumentRenderer {
 	private readonly vaultPath: string;
 	private readonly vaultUriPrefix: string;
 
-	constructor(private view: MarkdownView, private app: App,
-				private options: DocumentRendererOptions = documentRendererDefaults) {
+	constructor(private app: App,
+				private options: DocumentRendererOptions = documentRendererDefaults)
+	{
 		this.vaultPath = (this.app.vault.getRoot().vault.adapter as FileSystemAdapter).getBasePath()
 			.replace(/\\/g, '/');
 
 		this.vaultUriPrefix = `app://local/${this.vaultPath}`;
+
+		this.view = new Component();
 	}
 
 	/**
 	 * Render document into detached HTMLElement
 	 */
-	public async renderDocument(onlySelected: boolean): Promise<HTMLElement> {
+	public async renderDocument(markdown: string, path: string): Promise<HTMLElement> {
 		this.modal = new CopyingToHtmlModal(this.app);
 		this.modal.open();
 
 		try {
-			const topNode = await this.renderMarkdown(onlySelected);
+			const topNode = await this.renderMarkdown(markdown, path);
 			return await this.transformHTML(topNode!);
 		} finally {
 			this.modal.close();
@@ -334,22 +338,21 @@ class DocumentRenderer {
 	/**
 	 * Render current view into HTMLElement, expanding embedded links
 	 */
-	private async renderMarkdown(onlySelected: boolean): Promise<HTMLElement> {
-		const inputFile = this.view.file;
-		const markdown = ((onlySelected) ? this.view.editor.getSelection() : this.view.data);
-
+	private async renderMarkdown(markdown: string, path: string): Promise<HTMLElement> {
 		const processedMarkdown = this.preprocessMarkdown(markdown);
 
 		const wrapper = document.createElement('div');
 		wrapper.style.display = 'hidden';
 		document.body.appendChild(wrapper);
-		await MarkdownRenderer.renderMarkdown(processedMarkdown, wrapper, inputFile.path, this.view);
+		await MarkdownRenderer.renderMarkdown(processedMarkdown, wrapper, path, this.view);
 		await this.untilRendered();
 
 		await this.replaceEmbeds(wrapper);
 
 		const result = wrapper.cloneNode(true) as HTMLElement;
 		document.body.removeChild(wrapper);
+
+		this.view.unload();
 		return result;
 	}
 
@@ -371,8 +374,8 @@ class DocumentRenderer {
 	 * We have no reliable way to know if the document finished rendering. For instance dataviews or task blocks
 	 * may not have been post processed.
 	 * MarkdownPostProcessors are called on all the "blocks" in the HTML view. So we register one post-processor
-	 * with high-priority (low-number to mark the block as being processed, and another one with low-priority that
-	 * runs after all other post-processors).
+	 * with high-priority (low-number to mark the block as being processed), and another one with low-priority that
+	 * runs after all other post-processors.
 	 * Now if we see that no blocks are being post-processed, it can mean 2 things :
 	 *  - either we are between blocks
 	 *  - or we finished rendering the view
@@ -1075,19 +1078,19 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 			id: 'smart-copy-as-html',
 			name: 'Copy selection or document to clipboard',
 			checkCallback: this.buildCheckCallback(
-				view => this.doCopy(view, view.editor.somethingSelected()))
+				view => this.copyFromView(view, view.editor.somethingSelected()))
 		})
 
 		this.addCommand({
 			id: 'copy-as-html',
 			name: 'Copy entire document to clipboard',
-			checkCallback: this.buildCheckCallback(view => this.doCopy(view, false))
+			checkCallback: this.buildCheckCallback(view => this.copyFromView(view, false))
 		});
 
 		this.addCommand({
 			id: 'copy-selection-as-html',
 			name: 'Copy current selection to clipboard',
-			checkCallback: this.buildCheckCallback(view => this.doCopy(view, true))
+			checkCallback: this.buildCheckCallback(view => this.copyFromView(view, true))
 		});
 
 		// Register post-processors that keep track of the blocks being rendered. For explanation,
@@ -1143,9 +1146,32 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 		}
 	}
 
-	private async doCopy(activeView: MarkdownView, onlySelected: boolean) {
-		console.log(`Copying "${activeView.file.path}" to clipboard...`);
-		const copier = new DocumentRenderer(activeView, this.app, this.settings);
+	private async copyFromView(activeView: MarkdownView, onlySelected: boolean) {
+		const markdown = onlySelected ? activeView.editor.getSelection() : activeView.data;
+		const path = activeView.file.path;
+		const name = activeView.file.name;
+		return this.doCopy(markdown, path, name);
+	}
+
+	private async copyFromFile(file: TAbstractFile) {
+		if (!(file instanceof TFile)) {
+			console.log(`cannot copy folder to HTML: ${file.path}`);
+			return;
+		}
+
+		if (file.extension.toLowerCase() !== 'md') {
+			console.log(`cannot only copy .md files to HTML: ${file.path}`);
+			return;
+		}
+
+		const markdown = await file.vault.cachedRead(file);
+		return this.doCopy(markdown, file.path, file.name);
+	}
+
+	private async doCopy(markdown: string, path: string, name: string) {
+		console.log(`Copying "${path}" to clipboard...`);
+
+		const copier = new DocumentRenderer(this.app, this.settings);
 
 		try {
 			copyIsRunning = true;
@@ -1153,8 +1179,8 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 			ppLastBlockDate = Date.now();
 			ppIsProcessing = true;
 
-			const htmlBody = await copier.renderDocument(onlySelected);
-			const htmlDocument = htmlTemplate(this.settings.styleSheet, htmlBody.outerHTML, activeView.file.name);
+			const htmlBody = await copier.renderDocument(markdown, path);
+			const htmlDocument = htmlTemplate(this.settings.styleSheet, htmlBody.outerHTML, name);
 
 			const data =
 				new ClipboardItem({
@@ -1168,8 +1194,8 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 				});
 
 			await navigator.clipboard.write([data]);
-			console.log(`Copied ${onlySelected ? "selection" : "document"} to clipboard`);
-			new Notice(`${onlySelected ? "selection" : "document"} copied to clipboard`)
+			console.log(`Copied to clipboard as HTML`);
+			new Notice(`Copied to clipboard as HTML`)
 		} catch (error) {
 			new Notice(`copy failed: ${error}`);
 			console.error('copy failed', error);
@@ -1186,26 +1212,7 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 						.setTitle("Copy as HTML")
 						.setIcon("clipboard-copy")
 						.onClick(async () => {
-							// @ts-ignore
-							this.app.commands.executeCommandById('copy-document-as-html:smart-copy-as-html');
-						});
-				});
-				menu.addItem((item) => {
-					item
-						.setTitle("Copy entire document as HTML")
-						.setIcon("clipboard-copy")
-						.onClick(async () => {
-							// @ts-ignore
-							this.app.commands.executeCommandById('copy-document-as-html:copy-as-html');
-						});
-				});
-				menu.addItem((item) => {
-					item
-						.setTitle("Copy selection as HTML")
-						.setIcon("clipboard-copy")
-						.onClick(async () => {
-							// @ts-ignore
-							this.app.commands.executeCommandById('copy-document-as-html:copy-selection-as-html');
+							this.copyFromFile(file);
 						});
 				});
 			})
