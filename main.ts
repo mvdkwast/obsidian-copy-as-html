@@ -1093,7 +1093,7 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 				}
 
 				if (!checking) {
-					this.doCopy(activeView);
+					this.doCopy(activeView, false);
 				}
 
 				return true;
