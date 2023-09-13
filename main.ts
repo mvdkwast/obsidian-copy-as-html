@@ -931,7 +931,17 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 		containerEl.createEl('h3', {text: 'Rendering'});
 
 		new Setting(containerEl)
-			.setName('Remove front-matter sections')
+			.setName('Copy HTML fragment only')
+			.setDesc("If checked, only generate a HTML fragment and not a full HTML document. This excludes the header, and effectively disables all styling.")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.bareHtmlOnly)
+				.onChange(async (value) => {
+					this.plugin.settings.bareHtmlOnly = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Remove properties / front-matter sections')
 			.setDesc("If checked, the YAML content between --- lines at the front of the document are removed. If you don't know what this means, leave it on.")
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.removeFrontMatter)
@@ -953,7 +963,7 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Remove dataview metadata lines')
 			.setDesc(CopyDocumentAsHTMLSettingsTab.createFragmentWithHTML(`
-				<p>Remove lines that only contain dataview meta-data, eg. \"rating:: 9\". Metadata between square brackets is left intact.</p>
+				<p>Remove lines that only contain dataview meta-data, eg. "rating:: 9". Metadata between square brackets is left intact.</p>
 				<p>Current limitations are that lines starting with a space are not removed, and lines that look like metadata in code blocks are removed if they don't start with a space</p>`))
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.removeDataviewMetadataLines)
@@ -1054,6 +1064,11 @@ type CopyDocumentAsHTMLSettings = {
 
 	/** Style-sheet */
 	styleSheet: string;
+
+	/**
+	 * Only generate the HTML body, don't include the <head> section
+	 */
+	bareHtmlOnly: boolean;
 }
 
 const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
@@ -1065,7 +1080,8 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 	removeDataviewMetadataLines: false,
 	formatAsTables: false,
 	footnoteHandling: FootnoteHandling.REMOVE_LINK,
-	styleSheet: DEFAULT_STYLESHEET
+	styleSheet: DEFAULT_STYLESHEET,
+	bareHtmlOnly: false
 }
 
 export default class CopyDocumentAsHTMLPlugin extends Plugin {
@@ -1147,7 +1163,19 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 	}
 
 	private async copyFromView(activeView: MarkdownView, onlySelected: boolean) {
+		if (!activeView.editor) {
+			console.error('No editor in active view, nothing to copy');
+			return;
+		}
+
+		if (!activeView.file) {
+			// should not happen if we have an editor in the active view ?
+			console.error('No file in active view, nothing to copy');
+			return;
+		}
+
 		const markdown = onlySelected ? activeView.editor.getSelection() : activeView.data;
+
 		const path = activeView.file.path;
 		const name = activeView.file.name;
 		return this.doCopy(markdown, path, name);
@@ -1180,7 +1208,9 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 			ppIsProcessing = true;
 
 			const htmlBody = await copier.renderDocument(markdown, path);
-			const htmlDocument = htmlTemplate(this.settings.styleSheet, htmlBody.outerHTML, name);
+			const htmlDocument = this.settings.bareHtmlOnly
+				? htmlBody.outerHTML
+				: htmlTemplate(this.settings.styleSheet, htmlBody.outerHTML, name);
 
 			const data =
 				new ClipboardItem({
