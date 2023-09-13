@@ -931,6 +931,16 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 		containerEl.createEl('h3', {text: 'Rendering'});
 
 		new Setting(containerEl)
+			.setName('Include filename as header')
+			.setDesc("If checked, the filename is inserted as a level 1 header. (only if an entire document is copied)")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.fileNameAsHeader)
+				.onChange(async (value) => {
+					this.plugin.settings.fileNameAsHeader = value;
+					await this.plugin.saveSettings();
+				}))
+
+		new Setting(containerEl)
 			.setName('Copy HTML fragment only')
 			.setDesc("If checked, only generate a HTML fragment and not a full HTML document. This excludes the header, and effectively disables all styling.")
 			.addToggle(toggle => toggle
@@ -1065,10 +1075,11 @@ type CopyDocumentAsHTMLSettings = {
 	/** Style-sheet */
 	styleSheet: string;
 
-	/**
-	 * Only generate the HTML body, don't include the <head> section
-	 */
+	/** Only generate the HTML body, don't include the <head> section */
 	bareHtmlOnly: boolean;
+
+	/** Include filename in copy. Only when entire document is copied */
+	fileNameAsHeader: boolean;
 }
 
 const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
@@ -1081,7 +1092,8 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 	formatAsTables: false,
 	footnoteHandling: FootnoteHandling.REMOVE_LINK,
 	styleSheet: DEFAULT_STYLESHEET,
-	bareHtmlOnly: false
+	bareHtmlOnly: false,
+	fileNameAsHeader: false
 }
 
 export default class CopyDocumentAsHTMLPlugin extends Plugin {
@@ -1178,7 +1190,7 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 
 		const path = activeView.file.path;
 		const name = activeView.file.name;
-		return this.doCopy(markdown, path, name);
+		return this.doCopy(markdown, path, name, !onlySelected);
 	}
 
 	private async copyFromFile(file: TAbstractFile) {
@@ -1193,11 +1205,13 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 		}
 
 		const markdown = await file.vault.cachedRead(file);
-		return this.doCopy(markdown, file.path, file.name);
+		return this.doCopy(markdown, file.path, file.name, true);
 	}
 
-	private async doCopy(markdown: string, path: string, name: string) {
+	private async doCopy(markdown: string, path: string, name: string, isFullDocument: boolean) {
 		console.log(`Copying "${path}" to clipboard...`);
+		const title = name.replace(/\.md$/i, '');
+		console.log(`name=${name} title=${title}`);
 
 		const copier = new DocumentRenderer(this.app, this.settings);
 
@@ -1207,10 +1221,17 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 			ppLastBlockDate = Date.now();
 			ppIsProcessing = true;
 
-			const htmlBody = await copier.renderDocument(markdown, path);
+			let htmlBody = await copier.renderDocument(markdown, path);
+
+			if (this.settings.fileNameAsHeader && isFullDocument) {
+				const h1 = htmlBody.createEl('h1');
+				h1.innerHTML = title;
+				htmlBody.insertBefore(h1, htmlBody.firstChild);
+			}
+
 			const htmlDocument = this.settings.bareHtmlOnly
 				? htmlBody.outerHTML
-				: htmlTemplate(this.settings.styleSheet, htmlBody.outerHTML, name);
+				: htmlTemplate(this.settings.styleSheet, htmlBody.outerHTML, title);
 
 			const data =
 				new ClipboardItem({
