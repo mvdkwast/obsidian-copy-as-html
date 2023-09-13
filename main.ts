@@ -302,8 +302,6 @@ class DocumentRenderer {
 		['jpg', 'image/jpeg'],
 	]);
 
-	private readonly imageExtensions = ['gif', 'png', 'jpg', 'jpeg', 'bmp', 'png', 'webp', 'tiff', 'svg'];
-
 	private readonly externalSchemes = ['http', 'https'];
 
 	private readonly vaultPath: string;
@@ -347,8 +345,6 @@ class DocumentRenderer {
 		await MarkdownRenderer.render(this.app, processedMarkdown, wrapper, path, this.view);
 		await this.untilRendered();
 
-		await this.replaceEmbeds(wrapper);
-
 		const result = wrapper.cloneNode(true) as HTMLElement;
 		document.body.removeChild(wrapper);
 
@@ -390,101 +386,6 @@ class DocumentRenderer {
 			}
 			await delay(20);
 		}
-	}
-
-	/**
-	 * Replace span.internal-embed elements with the files / documents they link to. Images are not transformed
-	 * into data uris at this stage.
-	 */
-	private async replaceEmbeds(rootNode: HTMLElement): Promise<void> {
-		for (const node of Array.from(rootNode.querySelectorAll('.internal-embed'))) {
-			const src = node.getAttr('src');
-			const alt = node.getAttr('alt');
-
-			if (!src) {
-				node.remove();
-				continue;
-			}
-
-			const {path, extension, heading, blockReference} = this.getLinkParts(src);
-			if (extension === '' || extension === 'md') {
-				const file = this.getEmbeddedFile(path);
-				if (file) {
-					// Not recursively rendering the embedded elements here. If someone turns up with a need for
-					// this it should be easy to adapt this.
-					let markdown = await this.app.vault.cachedRead(file);
-
-					// If embedding links to a heading, only add the embedded section, default to the entire file
-					// if section not found
-					if (heading) {
-						markdown = this.extractSection(markdown, heading) ?? markdown;
-					} else if (blockReference) {
-						// TODO: implement block-reference matching
-					}
-
-					// remove link text
-					if (this.options.removeLinkText) {
-						node.innerHTML = "";
-					}
-
-					await MarkdownRenderer.renderMarkdown(markdown, node as HTMLElement, file.path, this.view)
-				}
-			} else if (this.imageExtensions.includes(extension)) {
-				const file = this.getEmbeddedFile(src);
-				if (file) {
-					const replacement = document.createElement('img');
-					replacement.setAttribute('src', `${this.vaultUriPrefix}/${file.path}`);
-
-					if (alt) {
-						replacement.setAttribute('alt', alt);
-					}
-
-					node.replaceWith(replacement);
-				}
-			} else {
-				// Not handling video, audio, ... on purpose
-				node.remove();
-			}
-		}
-	}
-
-	/**
-	 * Get a TFile from its `src` attribute of a `.linked-embed`, or undefined if not found or not a file.
-	 */
-	private getEmbeddedFile(src: string): TFile | undefined {
-		// TODO: this is messy : I agree Oliver Balfour :D
-		const subfolder = src.substring(this.vaultPath.length);
-		const file = this.app.metadataCache.getFirstLinkpathDest(src, subfolder);
-		if (!file) {
-			console.error(`Could not load ${src}, not found in metadataCache`);
-			return undefined;
-		}
-
-		return file as TFile;
-	}
-
-	/**
-	 * Retrieve section starting at given heading from markdown. Return undefined if heading not found.
-	 */
-	private extractSection(markdown: string, heading: string) {
-		const escapedHeading = heading.split(" ").join("[ \|]+")
-		// Get the header level
-		const matchSectionStart = new RegExp(`(#*) (?:\\[*${escapedHeading}\\]*[ ]*\\n)`);
-		let res = markdown.match(matchSectionStart)
-		if (!res || res.length <= 1) {
-			return undefined;
-		}
-
-		const headingLevel = res[1].length;
-
-		// Get everything until a header with the same or lower level appears in the text
-		const matchSectionEnd = new RegExp(`#* (?:\\[*${escapedHeading}\\]*[ ]*\\n)((?:.|\\n(?!#{1,${headingLevel}} ))*)`);
-		res = markdown.match(matchSectionEnd);
-		if (!res || res.length <= 1) {
-			return undefined;
-		}
-
-		return res[1];
 	}
 
 	/**
@@ -812,28 +713,6 @@ class DocumentRenderer {
 		const fileName = filePath.slice(filePath.lastIndexOf('/') + 1);
 		return fileName.slice(fileName.lastIndexOf('.') + 1 || fileName.length)
 			.toLowerCase();
-	}
-
-	/**
-	 * Split link path into components :
-	 * - path contains the filename
-	 * - extension is lower-cased
-	 * - heading is present if link ends with `#some-header`
-	 * - blockReference is present if link ends with `#^tag` (tag is a hex string)
-	 */
-	private getLinkParts(path: string): { path: string, extension: string, heading?: string, blockReference?: string } {
-		// split at right-most occurence
-		const hashIndex = path.lastIndexOf("#");
-		const [file, anchor] = hashIndex > 0
-			? [path.slice(0, hashIndex), path.slice(hashIndex + 1)]
-			: [path, ''];
-
-		return {
-			path: file,
-			extension: this.getExtension(file),
-			heading: !anchor?.startsWith("^") ? anchor : undefined,
-			blockReference: anchor?.startsWith("^") ? anchor : undefined,
-		}
 	}
 
 	private isSvg(mimeType: string): boolean {
