@@ -359,7 +359,7 @@ class DocumentRenderer {
 	private preprocessMarkdown(markdown: string): string {
 		let processed = markdown;
 
-		if (this.options.removeFrontMatter) {
+		if (this.options.removeDataviewMetadataLines) {
 			processed = processed.replace(/^[^ \t:#`<>][^:#`<>]+::.*$/gm, '');
 		}
 
