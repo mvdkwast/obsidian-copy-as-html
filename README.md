@@ -69,7 +69,7 @@ Also see the [issues](https://github.com/mvdkwast/obsidian-copy-as-html/issues) 
 
 Look for *Copy document as HTML* in the community plugin section in the Obsidian settings.
 
-Don't be afraid to comment if anything seems wrong !
+Don't be afraid to [report](https://github.com/mvdkwast/obsidian-copy-as-html/issues) or [ask](https://github.com/mvdkwast/obsidian-copy-as-html/discussions) if anything seems wrong !
 
 ## Development
 
