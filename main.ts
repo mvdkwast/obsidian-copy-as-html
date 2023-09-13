@@ -539,12 +539,10 @@ class DocumentRenderer {
 	private replaceInternalLinks(node: HTMLElement) {
 		node.querySelectorAll('a.internal-link')
 			.forEach(node => {
-				console.log(node.getText());
 				const textNode = node.parentNode!.createEl('span');
 				textNode.innerText = node.getText();
 				textNode.className = 'internal-link';
 				node.parentNode!.replaceChild(textNode, node);
-				console.log(`replacing with`, textNode)
 			});
 	}
 
@@ -1211,7 +1209,6 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 	private async doCopy(markdown: string, path: string, name: string, isFullDocument: boolean) {
 		console.log(`Copying "${path}" to clipboard...`);
 		const title = name.replace(/\.md$/i, '');
-		console.log(`name=${name} title=${title}`);
 
 		const copier = new DocumentRenderer(this.app, this.settings);
 
