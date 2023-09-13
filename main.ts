@@ -344,7 +344,7 @@ class DocumentRenderer {
 		const wrapper = document.createElement('div');
 		wrapper.style.display = 'hidden';
 		document.body.appendChild(wrapper);
-		await MarkdownRenderer.renderMarkdown(processedMarkdown, wrapper, path, this.view);
+		await MarkdownRenderer.render(this.app, processedMarkdown, wrapper, path, this.view);
 		await this.untilRendered();
 
 		await this.replaceEmbeds(wrapper);
@@ -457,11 +457,6 @@ class DocumentRenderer {
 		const file = this.app.metadataCache.getFirstLinkpathDest(src, subfolder);
 		if (!file) {
 			console.error(`Could not load ${src}, not found in metadataCache`);
-			return undefined;
-		}
-
-		if (!(file instanceof TFile)) {
-			console.error(`Embedded element '${src}' is not a file`);
 			return undefined;
 		}
 
@@ -624,7 +619,7 @@ class DocumentRenderer {
 
 		node.querySelectorAll('.footnote-link')
 			.forEach(link => {
-				const span = link.parentNode!.parentNode!.removeChild(link.parentNode!);
+				link.parentNode!.parentNode!.removeChild(link.parentNode!);
 			});
 	}
 
@@ -1260,7 +1255,7 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 						.setTitle("Copy as HTML")
 						.setIcon("clipboard-copy")
 						.onClick(async () => {
-							this.copyFromFile(file);
+							return this.copyFromFile(file);
 						});
 				});
 			})
