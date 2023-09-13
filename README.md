@@ -2,13 +2,15 @@
 
 Plugin for [Obsidian](https://obsidian.md) that copies the current document to the clipboard, so it can be pasted into HTML aware application like gmail.
 
-This plugin exposes the `Copy document as HTML` command, which can be bound to keyboard shortcuts (see below).
+This plugin exposes the `Copy document as HTML` command, which can be bound to keyboard shortcuts (see below). Content can also be copied from the file explorer view.
 
-![image](https://user-images.githubusercontent.com/2441349/202304790-aea2a29e-2ed8-4ba2-bfb6-caaeb823e6f0.png)
+![image](https://github.com/mvdkwast/obsidian-copy-as-html/assets/2441349/d6517572-507d-4d40-8bb5-b76f6bc85816)
 
 ## Features
 
 ### Commands
+
+![copy-as-html-actions](https://github.com/mvdkwast/obsidian-copy-as-html/assets/2441349/acd8b8af-0714-4800-8724-a4fca025aa5c)
 
 The commands can be bound to keyboard shortcuts from the hotkeys menu, or run using the commands menu (Ctrl+P)
 
@@ -32,16 +34,24 @@ Currently working with :
 - ✅ Excalidraw - rendering as bitmap solves pasting in gmail
 - ✅ Mermaid
 
+![image](https://github.com/mvdkwast/obsidian-copy-as-html/assets/2441349/ea03c9e5-50ec-4a11-af91-f937126392a2)
+
 ### Styling
 
-By default, simple styling is applied to the document. The stylesheet can be customized through the plugin settings.
+By default, simple styling is applied to the document. The stylesheet can be customized through the plugin settings, eg. to customize how tables or quotes look. Feel free to improve the current style and post it [here](https://github.com/mvdkwast/obsidian-copy-as-html/discussions) !
+
+![image](https://github.com/mvdkwast/obsidian-copy-as-html/assets/2441349/de0849b4-8779-457f-9349-2dacba7b699e)
+
 
 ## Advanced
 
 - You may choose whether you want to embed external links (http, https) or not. If you don't (default), you will need internet access to view the document, and the linked image may be taken offline. If you do your documents will be larger.
 - It is possible to customize or replace the stylesheet in the settings dialog. 
 - The default is to convert SVG to bitmap for better compatibility at the cost of potential quality loss. If you know that you are pasting into an application with good .svg support, you can disable the `Convert SVG to bitmap` setting.
-- It is possible to render code and callouts to HTML tables. This makes them ugly except in Google Docs where they make the document slightly prettier. 
+- It is possible to render code and callouts to HTML tables. This makes them ugly except in Google Docs where they make the document slightly prettier.
+- If you have titles in your markdown files, use the filename as title
+- If you don't need a full HTML document but only a HTML fragment, for instance to paste into an existing document enable the "Copy HTML fragment only" option.
+- You may also retrieve the HTML content by pasting into a non-HTML editor, such as notepad.
 
 ## Implementation
 
@@ -50,11 +60,10 @@ The plugin converts image references to data urls, so no references to the vault
 ## Known issues
 
 - No mobile support
-- Special fields (double-colon attributes, ...) are not removed. (front-matter is)
+- Support for removing special dataview fields (double-colon attributes, ...) is experimental, and bracket notation is not supported. They are also not removed from transcluded files.
 - data-uris can use a lot of memory for big/many pictures
-- transclusions with block references are not supported (transclusions with headings are)
 
-Also see the issues section on github.
+Also see the [issues](https://github.com/mvdkwast/obsidian-copy-as-html/issues) section on github, and feel free to ask anything [here](https://github.com/mvdkwast/obsidian-copy-as-html/discussions).
 
 ## Install
 
