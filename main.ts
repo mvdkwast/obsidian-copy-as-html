@@ -222,9 +222,11 @@ const MERMAID_STYLESHEET = `
 }
 `;
 
-const htmlTemplate = (stylesheet: string, body: string, title: string) => `<html>
+const htmlTemplate = (stylesheet: string, body: string, title: string) => `<!DOCTYPE html>
+<html>
 <head>
   <title>${title}</title>
+  <meta charset="UTF-8">
   <style>
     ${MERMAID_STYLESHEET}
     ${stylesheet}
