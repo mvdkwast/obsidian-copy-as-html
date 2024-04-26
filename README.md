@@ -38,7 +38,7 @@ Currently working with :
 
 ### Styling
 
-By default, simple styling is applied to the document. The stylesheet can be customized through the plugin settings, eg. to customize how tables or quotes look. Feel free to improve the current style and post it [here](https://github.com/mvdkwast/obsidian-copy-as-html/discussions) !
+By default, simple styling is applied to the document. The stylesheet can be customized through the plugin settings, eg. to customize how tables or quotes look. Feel free to improve the current style and [show it the world](https://github.com/mvdkwast/obsidian-copy-as-html/discussions/categories/show-and-tell) !
 
 ![image](https://github.com/mvdkwast/obsidian-copy-as-html/assets/2441349/de0849b4-8779-457f-9349-2dacba7b699e)
 
