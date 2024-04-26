@@ -79,6 +79,7 @@ Please see the [Obsidian sample plugin](https://github.com/obsidianmd/obsidian-s
 
 - Oliver Balfour for his [obsidian-pandoc](https://github.com/OliverBalfour/obsidian-pandoc) plugin, which helped me solve
 some rendering issues.
-- TfTHacker for his [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin which makes beta-testing a breeze.
+- @TfTHacker for his [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin which makes beta-testing a breeze.
 - PJ Eby for his [Hot-reload](https://github.com/pjeby/hot-reload) plugins which makes plugin development fast and fun.
-- jkunczik for enabling transclusions to work with heading references
+- @jkunczik for enabling transclusions to work with heading references
+- @Ivan1248 for making the generated HTML more standard-compliant and @fetwar for his constructive comments on the subject
