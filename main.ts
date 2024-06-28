@@ -302,7 +302,8 @@ type DocumentRendererOptions = {
 	embedExternalLinks: boolean,
 	removeDataviewMetadataLines: boolean,
 	footnoteHandling: FootnoteHandling
-	internalLinkHandling: InternalLinkHandling
+	internalLinkHandling: InternalLinkHandling,
+	disableImageEmbedding: boolean
 };
 
 const documentRendererDefaults: DocumentRendererOptions = {
@@ -313,7 +314,8 @@ const documentRendererDefaults: DocumentRendererOptions = {
 	embedExternalLinks: false,
 	removeDataviewMetadataLines: false,
 	footnoteHandling: FootnoteHandling.REMOVE_LINK,
-	internalLinkHandling: InternalLinkHandling.CONVERT_TO_TEXT
+	internalLinkHandling: InternalLinkHandling.CONVERT_TO_TEXT,
+	disableImageEmbedding: false
 };
 
 /**
@@ -459,8 +461,11 @@ class DocumentRenderer {
 			// not supported yet
 		}
 
-		await this.embedImages(node);
-		await this.renderSvg(node);
+		if (!this.options.disableImageEmbedding) {
+			await this.embedImages(node);
+			await this.renderSvg(node);
+		}
+
 		return node;
 	}
 
@@ -1072,6 +1077,18 @@ Note that the template is not used if the "Copy HTML fragment only" setting is e
 					await this.plugin.saveSettings();
 				});
 		});
+
+		containerEl.createEl('h3', {text: 'Exotic / Developer options'});
+
+		new Setting(containerEl)
+			.setName("Don't embed images")
+			.setDesc("When this option is enabled, images will not be embedded in the HTML document, but <em>broken</em> links will be left in place. This is not recommended.")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.disableImageEmbedding)
+				.onChange(async (value) => {
+					this.plugin.settings.disableImageEmbedding = value;
+					await this.plugin.saveSettings();
+				}));
 	}
 }
 
@@ -1121,6 +1138,11 @@ type CopyDocumentAsHTMLSettings = {
 
 	/** Include filename in copy. Only when entire document is copied */
 	fileNameAsHeader: boolean;
+
+	/**
+	 * Don't replace image links with data: uris. No idea why you would want this, but here you go.
+	 */
+	disableImageEmbedding: boolean;
 }
 
 const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
@@ -1137,7 +1159,8 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 	styleSheet: DEFAULT_STYLESHEET,
 	htmlTemplate: DEFAULT_HTML_TEMPLATE,
 	bareHtmlOnly: false,
-	fileNameAsHeader: false
+	fileNameAsHeader: false,
+	disableImageEmbedding: false,
 }
 
 export default class CopyDocumentAsHTMLPlugin extends Plugin {
