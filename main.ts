@@ -405,7 +405,8 @@ class DocumentRenderer {
 			this.removeFrontMatter(node);
 		}
 
-		this.replaceInternalLinks(node);
+		this.replaceLinksOfClass(node, 'internal-link');
+		this.replaceLinksOfClass(node, 'tag');
 		this.makeCheckboxesReadOnly(node);
 		this.removeCollapseIndicators(node);
 		this.removeButtons(node);
@@ -436,12 +437,12 @@ class DocumentRenderer {
 			.forEach(node => node.remove());
 	}
 
-	private replaceInternalLinks(node: HTMLElement) {
-		node.querySelectorAll('a.internal-link')
+	private replaceLinksOfClass(node: HTMLElement, className: string) {
+		node.querySelectorAll(`a.${className}`)
 			.forEach(node => {
 				const textNode = node.parentNode!.createEl('span');
 				textNode.innerText = node.getText();
-				textNode.className = 'internal-link';
+				textNode.className = className;
 				node.parentNode!.replaceChild(textNode, node);
 			});
 	}
