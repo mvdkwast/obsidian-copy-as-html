@@ -297,17 +297,19 @@ enum InternalLinkHandling {
 type DocumentRendererOptions = {
 	convertSvgToBitmap: boolean,
 	removeFrontMatter: boolean,
-	formatAsTables: boolean,
+	formatCodeWithTables: boolean,
+	formatCalloutsWithTables: boolean,
 	embedExternalLinks: boolean,
 	removeDataviewMetadataLines: boolean,
 	footnoteHandling: FootnoteHandling
 	internalLinkHandling: InternalLinkHandling
 };
 
-const documentRendererDefaults = {
+const documentRendererDefaults: DocumentRendererOptions = {
 	convertSvgToBitmap: true,
 	removeFrontMatter: true,
-	formatAsTables: false,
+	formatCodeWithTables: false,
+	formatCalloutsWithTables: false,
 	embedExternalLinks: false,
 	removeDataviewMetadataLines: false,
 	footnoteHandling: FootnoteHandling.REMOVE_LINK,
@@ -440,8 +442,11 @@ class DocumentRenderer {
 		this.removeButtons(node);
 		this.removeStrangeNewWorldsLinks(node);
 
-		if (this.options.formatAsTables) {
+		if (this.options.formatCodeWithTables) {
 			this.transformCodeToTables(node);
+		}
+
+		if (this.options.formatCalloutsWithTables) {
 			this.transformCalloutsToTables(node);
 		}
 
@@ -865,14 +870,25 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 
 
 		new Setting(containerEl)
-			.setName('Render some elements as tables')
-			.setDesc("If checked code blocks and callouts are rendered as tables, which makes pasting into Google docs somewhat prettier.")
+			.setName('Render code with tables')
+			.setDesc("If checked code blocks are rendered as tables, which makes pasting into Google docs somewhat prettier.")
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.formatAsTables)
+				.setValue(this.plugin.settings.formatCodeWithTables)
 				.onChange(async (value) => {
-					this.plugin.settings.formatAsTables = value;
+					this.plugin.settings.formatCodeWithTables = value;
 					await this.plugin.saveSettings();
 				}));
+
+		new Setting(containerEl)
+			.setName('Render callouts with tables')
+			.setDesc("If checked callouts are rendered as tables, which makes pasting into Google docs somewhat prettier.")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.formatCalloutsWithTables)
+				.onChange(async (value) => {
+					this.plugin.settings.formatCalloutsWithTables = value;
+					await this.plugin.saveSettings();
+				}));
+
 
 		containerEl.createEl('h3', {text: 'Rendering'});
 
@@ -1066,8 +1082,11 @@ type CopyDocumentAsHTMLSettings = {
 	/** If set svg are converted to bitmap */
 	convertSvgToBitmap: boolean;
 
-	/** Render some elements as tables */
-	formatAsTables: boolean;
+	/** Render code elements as tables */
+	formatCodeWithTables: boolean;
+
+	/** Render callouts as tables */
+	formatCalloutsWithTables: boolean;
 
 	/** Embed external links (load them and embed their content) */
 	embedExternalLinks: boolean;
@@ -1111,7 +1130,8 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 	useCustomHtmlTemplate: false,
 	embedExternalLinks: false,
 	removeDataviewMetadataLines: false,
-	formatAsTables: false,
+	formatCodeWithTables: false,
+	formatCalloutsWithTables: false,
 	footnoteHandling: FootnoteHandling.REMOVE_LINK,
 	internalLinkHandling: InternalLinkHandling.CONVERT_TO_TEXT,
 	styleSheet: DEFAULT_STYLESHEET,
