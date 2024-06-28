@@ -20,7 +20,7 @@ import {
  * Like Promise.all(), but with a callback to indicate progress. Graciously lifted from
  * https://stackoverflow.com/a/42342373/1341132
  */
-function allWithProgress(promises: Promise<any>[], callback: (percentCompleted: number) => void) {
+function allWithProgress(promises: Promise<never>[], callback: (percentCompleted: number) => void) {
 	let count = 0;
 	callback(0);
 	for (const promise of promises) {
@@ -312,8 +312,7 @@ class DocumentRenderer {
 	private readonly vaultUriPrefix: string;
 
 	constructor(private app: App,
-				private options: DocumentRendererOptions = documentRendererDefaults)
-	{
+				private options: DocumentRendererOptions = documentRendererDefaults) {
 		this.vaultPath = (this.app.vault.getRoot().vault.adapter as FileSystemAdapter).getBasePath()
 			.replace(/\\/g, '/');
 
@@ -596,7 +595,7 @@ class DocumentRenderer {
 		const promises: Promise<void>[] = [];
 
 		const replaceSvg = async (svg: SVGSVGElement) => {
-			let style: HTMLStyleElement = svg.querySelector('style') || svg.appendChild(document.createElement('style'));
+			const style: HTMLStyleElement = svg.querySelector('style') || svg.appendChild(document.createElement('style'));
 			style.innerHTML += MERMAID_STYLESHEET;
 
 			const svgAsString = xmlSerializer.serializeToString(svg);
@@ -740,14 +739,14 @@ class CopyingToHtmlModal extends Modal {
 	}
 
 	onOpen() {
-		let {titleEl, contentEl} = this;
+		const {titleEl, contentEl} = this;
 		titleEl.setText('Copying to clipboard');
 		this._progress = contentEl.createEl('progress');
 		this._progress.style.width = '100%';
 	}
 
 	onClose() {
-		let {contentEl} = this;
+		const {contentEl} = this;
 		contentEl.empty();
 	}
 }
@@ -864,7 +863,7 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 			.setDesc(CopyDocumentAsHTMLSettingsTab.createFragmentWithHTML(`
 				<ul>
 				  <li>Remove everything: Remove references and links.</li>
-				  <li>Display only: leave reference and foot-note, but don\'t display as a link.</li> 
+				  <li>Display only: leave reference and foot-note, but don't display as a link.</li> 
 				  <li>Display and link: attempt to link the reference to the footnote, may not work depending on paste target.</li>
 				</ul>`)
 			)
@@ -1097,7 +1096,7 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 			ppLastBlockDate = Date.now();
 			ppIsProcessing = true;
 
-			let htmlBody = await copier.renderDocument(markdown, path);
+			const htmlBody = await copier.renderDocument(markdown, path);
 
 			if (this.settings.fileNameAsHeader && isFullDocument) {
 				const h1 = htmlBody.createEl('h1');
