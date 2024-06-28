@@ -52,6 +52,7 @@ By default, simple styling is applied to the document. The stylesheet can be cus
 - If you have titles in your markdown files, use the filename as title
 - If you don't need a full HTML document but only a HTML fragment, for instance to paste into an existing document enable the "Copy HTML fragment only" option.
 - You may also retrieve the HTML content by pasting into a non-HTML editor, such as notepad.
+- Provide your own HTML template
 
 ## Implementation
 
@@ -83,3 +84,6 @@ some rendering issues.
 - PJ Eby for his [Hot-reload](https://github.com/pjeby/hot-reload) plugins which makes plugin development fast and fun.
 - @jkunczik for enabling transclusions to work with heading references
 - @Ivan1248 for making the generated HTML more standard-compliant and @fetwar for his constructive comments on the subject
+- @vgyenge6 for his suggestions
+- @HMLeeSoundcat for more customization ideas and providing sample code
+- @Luiz-nyan for suggesting the inclusion of Obsidian links
