@@ -224,20 +224,22 @@ const MERMAID_STYLESHEET = `
 }
 `;
 
-const htmlTemplate = (stylesheet: string, body: string, title: string) => `<!DOCTYPE html>
+const DEFAULT_HTML_TEMPLATE = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${title}</title>
+  <title>\${title}</title>
   <style>
-    ${MERMAID_STYLESHEET}
-    ${stylesheet}
+    \${MERMAID_STYLESHEET}
+    \${stylesheet}
   </style>
 </head>
 <body>
-${body}
+\${body}
 </body>
-</html>`;
+</html>
+`;
+
 
 /*
  * Plugin code
@@ -891,14 +893,14 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 				})
 			)
 
+		containerEl.createEl('h3', {text: 'Custom templates (advanced)'});
+
 		const useCustomStylesheetSetting = new Setting(containerEl)
 			.setName('Provide a custom stylesheet')
-			.setDesc('The default stylesheet provides minimalistic theming. You may want to customize it for better looks.');
+			.setDesc('The default stylesheet provides minimalistic theming. You may want to customize it for better looks. Disabling this setting will restore the default stylesheet.');
 
 		const customStylesheetSetting = new Setting(containerEl)
-			.setName('Custom stylesheet')
-			.setDesc('Disabling the setting above will replace the custom stylesheet with the default.')
-			.setClass('custom-css-setting')
+			.setClass('customizable-text-setting')
 			.addTextArea(textArea => textArea
 				.setValue(this.plugin.settings.styleSheet)
 				.onChange(async (value) => {
@@ -916,6 +918,44 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 					customStylesheetSetting.settingEl.toggle(this.plugin.settings.useCustomStylesheet);
 					if (!value) {
 						this.plugin.settings.styleSheet = DEFAULT_STYLESHEET;
+					}
+					await this.plugin.saveSettings();
+				});
+		});
+
+		const useCustomHtmlTemplateSetting = new Setting(containerEl)
+			.setName('Provide a custom HTML template')
+			.setDesc(CopyDocumentAsHTMLSettingsTab.createFragmentWithHTML(`For even more customization, you can 
+provide a custom HTML template. Disabling this setting will restore the default template.<br/><br/>
+Note that the template is not used if the "Copy HTML fragment only" setting is enabled.`));
+
+		const customHtmlTemplateSetting = new Setting(containerEl)
+			.setDesc(CopyDocumentAsHTMLSettingsTab.createFragmentWithHTML(`
+			The template should include the following placeholders :<br/>
+<ul>
+	<li><code>$\{title}</code>: the document title</li>
+	<li><code>$\{stylesheet}</code>: the CSS stylesheet. The custom stylesheet will be applied if any is specified</li>
+	<li><code>$\{MERMAID_STYLESHEET}</code>: the CSS for mermaid diagrams</li>
+	<li><code>$\{body}</code>: the document body</li>
+</ul>`))
+			.setClass('customizable-text-setting')
+			.addTextArea(textArea => textArea
+				.setValue(this.plugin.settings.htmlTemplate)
+				.onChange(async (value) => {
+					this.plugin.settings.htmlTemplate = value;
+					await this.plugin.saveSettings();
+				}));
+
+		useCustomHtmlTemplateSetting.addToggle(toggle => {
+			customHtmlTemplateSetting.settingEl.toggle(this.plugin.settings.useCustomHtmlTemplate);
+
+			toggle
+				.setValue(this.plugin.settings.useCustomHtmlTemplate)
+				.onChange(async (value) => {
+					this.plugin.settings.useCustomHtmlTemplate = value;
+					customHtmlTemplateSetting.settingEl.toggle(this.plugin.settings.useCustomHtmlTemplate);
+					if (!value) {
+						this.plugin.settings.htmlTemplate = DEFAULT_HTML_TEMPLATE;
 					}
 					await this.plugin.saveSettings();
 				});
@@ -948,8 +988,18 @@ type CopyDocumentAsHTMLSettings = {
 	/** remember if the stylesheet was default or custom */
 	useCustomStylesheet: boolean;
 
+	/**
+	 * remember if the HTML wrapper was default or custom
+	 */
+	useCustomHtmlTemplate: boolean;
+
 	/** Style-sheet */
 	styleSheet: string;
+
+	/**
+	 * HTML wrapper
+	 */
+	htmlTemplate: string;
 
 	/** Only generate the HTML body, don't include the <head> section */
 	bareHtmlOnly: boolean;
@@ -963,11 +1013,13 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 	removeLinkText: false,
 	convertSvgToBitmap: true,
 	useCustomStylesheet: false,
+	useCustomHtmlTemplate: false,
 	embedExternalLinks: false,
 	removeDataviewMetadataLines: false,
 	formatAsTables: false,
 	footnoteHandling: FootnoteHandling.REMOVE_LINK,
 	styleSheet: DEFAULT_STYLESHEET,
+	htmlTemplate: DEFAULT_HTML_TEMPLATE,
 	bareHtmlOnly: false,
 	fileNameAsHeader: false
 }
@@ -1022,6 +1074,10 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 		// reload it so we may update it in a new release
 		if (!this.settings.useCustomStylesheet) {
 			this.settings.styleSheet = DEFAULT_STYLESHEET;
+		}
+
+		if (!this.settings.useCustomHtmlTemplate) {
+			this.settings.htmlTemplate = DEFAULT_HTML_TEMPLATE;
 		}
 	}
 
@@ -1106,7 +1162,7 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 
 			const htmlDocument = this.settings.bareHtmlOnly
 				? htmlBody.outerHTML
-				: htmlTemplate(this.settings.styleSheet, htmlBody.outerHTML, title);
+				: this.expandHtmlTemplate(htmlBody.outerHTML, title);
 
 			const data =
 				new ClipboardItem({
@@ -1128,6 +1184,18 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 		} finally {
 			copyIsRunning = false;
 		}
+	}
+
+	private expandHtmlTemplate(html: string, title: string) {
+		const template = this.settings.useCustomHtmlTemplate
+			? this.settings.htmlTemplate
+			: DEFAULT_HTML_TEMPLATE;
+
+		return template
+				.replace('${title}', title)
+				.replace('${body}', html)
+				.replace('${stylesheet}', this.settings.styleSheet)
+				.replace('${MERMAID_STYLESHEET}', MERMAID_STYLESHEET);
 	}
 
 	private setupEditorMenuEntry() {
