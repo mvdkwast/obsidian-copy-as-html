@@ -269,27 +269,49 @@ enum FootnoteHandling {
 	TITLE_ATTRIBUTE
 }
 
+enum InternalLinkHandling {
+	/**
+	 * remove link and only display link text
+	 */
+	CONVERT_TO_TEXT,
+
+	/**
+	 * convert to an obsidian:// link to open the file or tag in Obsidian
+	 */
+	CONVERT_TO_OBSIDIAN_URI,
+
+	/**
+	 * Keep link, but convert extension to .html
+	 */
+	LINK_TO_HTML,
+
+	/**
+	 * Keep generated link
+	 */
+	LEAVE_AS_IS
+}
+
 /**
  * Options for DocumentRenderer
  */
 type DocumentRendererOptions = {
 	convertSvgToBitmap: boolean,
 	removeFrontMatter: boolean,
-	removeLinkText: boolean,
 	formatAsTables: boolean,
 	embedExternalLinks: boolean,
 	removeDataviewMetadataLines: boolean,
-	footnoteHandling: FootnoteHandling,
+	footnoteHandling: FootnoteHandling
+	internalLinkHandling: InternalLinkHandling
 };
 
 const documentRendererDefaults = {
 	convertSvgToBitmap: true,
 	removeFrontMatter: true,
-	removeLinkText: false,
 	formatAsTables: false,
 	embedExternalLinks: false,
 	removeDataviewMetadataLines: false,
-	footnoteHandling: FootnoteHandling.REMOVE_LINK
+	footnoteHandling: FootnoteHandling.REMOVE_LINK,
+	internalLinkHandling: InternalLinkHandling.CONVERT_TO_TEXT
 };
 
 /**
@@ -311,14 +333,19 @@ class DocumentRenderer {
 	private readonly externalSchemes = ['http', 'https'];
 
 	private readonly vaultPath: string;
-	private readonly vaultUriPrefix: string;
+	private readonly vaultLocalUriPrefix: string;
+	private readonly vaultOpenUri: string;
+	private readonly vaultSearchUri: string;
 
 	constructor(private app: App,
 				private options: DocumentRendererOptions = documentRendererDefaults) {
 		this.vaultPath = (this.app.vault.getRoot().vault.adapter as FileSystemAdapter).getBasePath()
 			.replace(/\\/g, '/');
 
-		this.vaultUriPrefix = `app://local/${this.vaultPath}`;
+		this.vaultLocalUriPrefix = `app://local/${this.vaultPath}`;
+
+		this.vaultOpenUri = `obsidian://open?vault=${encodeURIComponent(this.app.vault.getName())}`;
+		this.vaultSearchUri = `obsidian://search?vault=${encodeURIComponent(this.app.vault.getName())}`;
 
 		this.view = new Component();
 	}
@@ -439,12 +466,53 @@ class DocumentRenderer {
 	}
 
 	private replaceLinksOfClass(node: HTMLElement, className: string) {
+		if (this.options.internalLinkHandling === InternalLinkHandling.LEAVE_AS_IS) {
+			return;
+		}
+
 		node.querySelectorAll(`a.${className}`)
 			.forEach(node => {
-				const textNode = node.parentNode!.createEl('span');
-				textNode.innerText = node.getText();
-				textNode.className = className;
-				node.parentNode!.replaceChild(textNode, node);
+				switch (this.options.internalLinkHandling) {
+					case InternalLinkHandling.CONVERT_TO_OBSIDIAN_URI: {
+						const linkNode = node.parentNode!.createEl('a');
+						linkNode.innerText = node.getText();
+
+						if (className === 'tag') {
+							linkNode.href = this.vaultSearchUri + "&query=tag:" + encodeURIComponent(node.getAttribute('href')!);
+						} else {
+							if (node.getAttribute('href')!.startsWith('#')) {
+								linkNode.href = node.getAttribute('href')!;
+							} else {
+								linkNode.href = this.vaultOpenUri + "&file=" + encodeURIComponent(node.getAttribute('href')!);
+							}
+						}
+						linkNode.className = className;
+						node.parentNode!.replaceChild(linkNode, node);
+					}
+						break;
+
+					case InternalLinkHandling.LINK_TO_HTML: {
+						const linkNode = node.parentNode!.createEl('a');
+						linkNode.innerText = node.getAttribute('href')!; //node.getText();
+						linkNode.className = className;
+						if (node.getAttribute('href')!.startsWith('#')) {
+							linkNode.href = node.getAttribute('href')!;
+						} else {
+							linkNode.href = node.getAttribute('href')!.replace(/^(.*?)(?:\.md)?(#.*?)?$/, '$1.html$2');
+						}
+						node.parentNode!.replaceChild(linkNode, node);
+					}
+						break;
+
+					case InternalLinkHandling.CONVERT_TO_TEXT:
+					default: {
+						const textNode = node.parentNode!.createEl('span');
+						textNode.innerText = node.getText();
+						textNode.className = className;
+						node.parentNode!.replaceChild(textNode, node);
+					}
+						break;
+				}
 			});
 	}
 
@@ -629,9 +697,9 @@ class DocumentRenderer {
 	private async replaceImageSource(image: HTMLImageElement): Promise<void> {
 		const imageSourcePath = decodeURI(image.src);
 
-		if (imageSourcePath.startsWith(this.vaultUriPrefix)) {
+		if (imageSourcePath.startsWith(this.vaultLocalUriPrefix)) {
 			// Transform uri to Obsidian relative path
-			let path = imageSourcePath.substring(this.vaultUriPrefix.length + 1)
+			let path = imageSourcePath.substring(this.vaultLocalUriPrefix.length + 1)
 				.replace(/[?#].*/, '');
 			path = decodeURI(path);
 
@@ -839,16 +907,6 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Remove link text')
-			.setDesc("If checked the title of the embedded markdown files is removed")
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.removeLinkText)
-				.onChange(async (value) => {
-					this.plugin.settings.removeLinkText = value;
-					await this.plugin.saveSettings();
-				}))
-
-		new Setting(containerEl)
 			.setName('Remove dataview metadata lines')
 			.setDesc(CopyDocumentAsHTMLSettingsTab.createFragmentWithHTML(`
 				<p>Remove lines that only contain dataview meta-data, eg. "rating:: 9". Metadata between square brackets is left intact.</p>
@@ -890,6 +948,44 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 							this.plugin.settings.footnoteHandling = FootnoteHandling.LEAVE_LINK;
 							break;
 					}
+					await this.plugin.saveSettings();
+				})
+			)
+
+		new Setting(containerEl)
+			.setName('Link handling')
+			.setDesc(CopyDocumentAsHTMLSettingsTab.createFragmentWithHTML(`
+				This option controls how links to Obsidian documents and tags are handled.
+				<ul>
+				  <li>Don't link: only render the link title</li>
+				  <li>Open with Obsidian: convert the link to an obsidian:// URI</li> 
+				  <li>Link to HTML: keep the link, but convert the extension to .html</li>
+				  <li>Leave as is: keep the generated link</li>	
+				</ul>`)
+			)
+			.addDropdown(dropdown => dropdown
+				.addOption(InternalLinkHandling.CONVERT_TO_TEXT.toString(), 'Don\'t link')
+				.addOption(InternalLinkHandling.CONVERT_TO_OBSIDIAN_URI.toString(), 'Open with Obsidian')
+				.addOption(InternalLinkHandling.LINK_TO_HTML.toString(), 'Link to HTML')
+				.addOption(InternalLinkHandling.LEAVE_AS_IS.toString(), 'Leave as is')
+				.setValue(this.plugin.settings.internalLinkHandling.toString())
+				.onChange(async (value) => {
+					switch (value) {
+						case InternalLinkHandling.CONVERT_TO_OBSIDIAN_URI.toString():
+							this.plugin.settings.internalLinkHandling = InternalLinkHandling.CONVERT_TO_OBSIDIAN_URI;
+							break;
+						case InternalLinkHandling.LINK_TO_HTML.toString():
+							this.plugin.settings.internalLinkHandling = InternalLinkHandling.LINK_TO_HTML;
+							break;
+						case InternalLinkHandling.LEAVE_AS_IS.toString():
+							this.plugin.settings.internalLinkHandling = InternalLinkHandling.LEAVE_AS_IS;
+							break;
+						case InternalLinkHandling.CONVERT_TO_TEXT.toString():
+						default:
+							this.plugin.settings.internalLinkHandling = InternalLinkHandling.CONVERT_TO_TEXT;
+							break;
+					}
+					await this.plugin.saveSettings();
 				})
 			)
 
@@ -967,9 +1063,6 @@ type CopyDocumentAsHTMLSettings = {
 	/** Remove front-matter */
 	removeFrontMatter: boolean;
 
-	/** Remove titles from embedded links */
-	removeLinkText: boolean;
-
 	/** If set svg are converted to bitmap */
 	convertSvgToBitmap: boolean;
 
@@ -984,6 +1077,9 @@ type CopyDocumentAsHTMLSettings = {
 
 	/** How are foot-notes displayed ? */
 	footnoteHandling: FootnoteHandling;
+
+	/** How are internal links handled ? */
+	internalLinkHandling: InternalLinkHandling;
 
 	/** remember if the stylesheet was default or custom */
 	useCustomStylesheet: boolean;
@@ -1010,7 +1106,6 @@ type CopyDocumentAsHTMLSettings = {
 
 const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 	removeFrontMatter: true,
-	removeLinkText: false,
 	convertSvgToBitmap: true,
 	useCustomStylesheet: false,
 	useCustomHtmlTemplate: false,
@@ -1018,6 +1113,7 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 	removeDataviewMetadataLines: false,
 	formatAsTables: false,
 	footnoteHandling: FootnoteHandling.REMOVE_LINK,
+	internalLinkHandling: InternalLinkHandling.CONVERT_TO_TEXT,
 	styleSheet: DEFAULT_STYLESHEET,
 	htmlTemplate: DEFAULT_HTML_TEMPLATE,
 	bareHtmlOnly: false,
@@ -1192,10 +1288,10 @@ export default class CopyDocumentAsHTMLPlugin extends Plugin {
 			: DEFAULT_HTML_TEMPLATE;
 
 		return template
-				.replace('${title}', title)
-				.replace('${body}', html)
-				.replace('${stylesheet}', this.settings.styleSheet)
-				.replace('${MERMAID_STYLESHEET}', MERMAID_STYLESHEET);
+			.replace('${title}', title)
+			.replace('${body}', html)
+			.replace('${stylesheet}', this.settings.styleSheet)
+			.replace('${MERMAID_STYLESHEET}', MERMAID_STYLESHEET);
 	}
 
 	private setupEditorMenuEntry() {
