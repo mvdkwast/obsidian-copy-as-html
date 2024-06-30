@@ -6,7 +6,7 @@ import {
 	MarkdownRenderer,
 	MarkdownView,
 	Modal,
-	Notice,
+	Notice, Platform,
 	Plugin,
 	PluginSettingTab,
 	Setting,
@@ -345,15 +345,32 @@ class DocumentRenderer {
 
 	constructor(private app: App,
 				private options: DocumentRendererOptions = documentRendererDefaults) {
-		this.vaultPath = (this.app.vault.getRoot().vault.adapter as FileSystemAdapter).getBasePath()
-			.replace(/\\/g, '/');
 
+		this.vaultPath = this.getVaultPath();
 		this.vaultLocalUriPrefix = `app://local/${this.vaultPath}`;
 
 		this.vaultOpenUri = `obsidian://open?vault=${encodeURIComponent(this.app.vault.getName())}`;
 		this.vaultSearchUri = `obsidian://search?vault=${encodeURIComponent(this.app.vault.getName())}`;
 
 		this.view = new Component();
+	}
+
+	private getVaultPath() {
+		if (Platform.isDesktopApp) {
+			return (this.app.vault.getRoot().vault.adapter as FileSystemAdapter).getBasePath()
+				.replace(/\\/g, '/');
+		}
+		else {
+			// warning: this uses an internal API, so it might break in future versions, make sure we can debug this
+			// easily.
+			if (!('basePath' in this.app.vault.getRoot().vault.adapter)) {
+				console.warn('Could not determine vault path');
+				return '';
+			}
+
+			// @ts-ignore
+			return (this.app.vault.getRoot().vault.adapter.basePath || '')
+		}
 	}
 
 	/**
@@ -758,9 +775,9 @@ class DocumentRenderer {
 	private async replaceImageSource(image: HTMLImageElement): Promise<void> {
 		const imageSourcePath = decodeURI(image.src);
 
-		if (imageSourcePath.startsWith(this.vaultLocalUriPrefix)) {
+		if (this.isVaultUri(imageSourcePath)) {
 			// Transform uri to Obsidian relative path
-			let path = imageSourcePath.substring(this.vaultLocalUriPrefix.length + 1)
+			let path = this.relativePathFromVaultUri(imageSourcePath)
 				.replace(/[?#].*/, '');
 			path = decodeURI(path);
 
@@ -779,6 +796,24 @@ class DocumentRenderer {
 			// urls, but we may have un uri that points to our local machine or network, that will not be accessible
 			// wherever we intend to paste the document.
 			image.src = await this.imageToDataUri(image.src);
+		}
+	}
+
+	private isVaultUri(path: string): boolean {
+		if (Platform.isDesktopApp) {
+			return path.startsWith(this.vaultLocalUriPrefix);
+		}
+		else {
+			return path.includes(this.vaultPath);
+		}
+	}
+
+	private relativePathFromVaultUri(path: string): string {
+		if (Platform.isDesktopApp) {
+			return path.substring(this.vaultLocalUriPrefix.length + 1);
+		}
+		else {
+			return path.substring(path.indexOf(this.vaultPath) + this.vaultPath.length + 1);
 		}
 	}
 
