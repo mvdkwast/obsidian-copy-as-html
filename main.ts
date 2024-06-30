@@ -1,6 +1,7 @@
 import {
 	App,
-	arrayBufferToBase64, Component,
+	arrayBufferToBase64,
+	Component,
 	FileSystemAdapter,
 	MarkdownRenderer,
 	MarkdownView,
@@ -8,7 +9,8 @@ import {
 	Notice,
 	Plugin,
 	PluginSettingTab,
-	Setting, TAbstractFile,
+	Setting,
+	TAbstractFile,
 	TFile
 } from 'obsidian';
 
@@ -381,11 +383,60 @@ class DocumentRenderer {
 		await MarkdownRenderer.render(this.app, processedMarkdown, wrapper, path, this.view);
 		await this.untilRendered();
 
+		await this.loadComponents(this.view);
+
 		const result = wrapper.cloneNode(true) as HTMLElement;
 		document.body.removeChild(wrapper);
 
 		this.view.unload();
 		return result;
+	}
+
+	/**
+	 * Some plugins may expose components that rely on onload() to be called which isn't the case due to the
+	 * way we render the markdown. We need to call onload() on all components to ensure they are properly loaded.
+	 * Since this is a bit of a hack (we need to access Obsidian internals), we limit this to components of which
+	 * we know that they don't get rendered correctly otherwise.
+	 * We attempt to make sure that if the Obsidian internals change, this will fail gracefully.
+	 */
+	private async loadComponents(view: Component) {
+		type InternalComponent = Component & {
+			_children: Component[];
+			onload: () => void | Promise<void>;
+		}
+
+		const internalView = view as InternalComponent;
+
+		// recursively call onload() on all children, depth-first
+		const loadChildren = async (
+			component: Component,
+			visited: Set<Component> = new Set()
+		): Promise<void> => {
+			if (visited.has(component)) {
+				return;  // Skip if already visited
+			}
+
+			visited.add(component);
+
+			const internalComponent = component as InternalComponent;
+
+			if (internalComponent._children?.length) {
+				for (const child of internalComponent._children) {
+					await loadChildren(child, visited);
+				}
+			}
+
+			try {
+				// relies on the Sheet plugin (advanced-table-xt) not to be minified
+				if (component?.constructor?.name === 'SheetElement') {
+					await component.onload();
+				}
+			} catch (error) {
+				console.error(`Error calling onload()`, error);
+			}
+		};
+
+		await loadChildren(internalView);
 	}
 
 	private preprocessMarkdown(markdown: string): string {
