@@ -305,7 +305,8 @@ type DocumentRendererOptions = {
 	removeDataviewMetadataLines: boolean,
 	footnoteHandling: FootnoteHandling
 	internalLinkHandling: InternalLinkHandling,
-	disableImageEmbedding: boolean
+	disableImageEmbedding: boolean,
+	formatCheckboxesWithEmojis: boolean
 };
 
 const documentRendererDefaults: DocumentRendererOptions = {
@@ -317,7 +318,8 @@ const documentRendererDefaults: DocumentRendererOptions = {
 	removeDataviewMetadataLines: false,
 	footnoteHandling: FootnoteHandling.REMOVE_LINK,
 	internalLinkHandling: InternalLinkHandling.CONVERT_TO_TEXT,
-	disableImageEmbedding: false
+	disableImageEmbedding: false,
+	formatCheckboxesWithEmojis: false
 };
 
 /**
@@ -490,7 +492,7 @@ class DocumentRenderer {
 
 		this.replaceLinksOfClass(node, 'internal-link');
 		this.replaceLinksOfClass(node, 'tag');
-		this.makeCheckboxesReadOnly(node);
+		this.replaceCheckboxes(node);
 		this.removeCollapseIndicators(node);
 		this.removeButtons(node);
 		this.removeStrangeNewWorldsLinks(node);
@@ -577,9 +579,20 @@ class DocumentRenderer {
 			});
 	}
 
-	private makeCheckboxesReadOnly(node: HTMLElement) {
-		node.querySelectorAll('input[type="checkbox"]')
-			.forEach(node => node.setAttribute('disabled', 'disabled'));
+	private replaceCheckboxes(node: HTMLElement) {
+		if (this.options.formatCheckboxesWithEmojis) {
+			node.querySelectorAll('input[type="checkbox"]')
+				.forEach((node: HTMLInputElement) => {
+					const span = node.parentNode!.createEl('span');
+					span.className = node.checked ? 'checkbox checkbox-checked' : 'checkbox checkbox-unchecked';
+					span.innerText = node.checked ? '☑ ' : '☐ ';
+					node.parentNode!.replaceChild(span, node);
+				}
+			);
+		} else {
+			node.querySelectorAll('input[type="checkbox"]')
+				.forEach(node => node.setAttribute('disabled', 'disabled'));
+		}
 	}
 
 	/** Remove the collapse indicators from HTML, not needed (and not working) in copy */
@@ -945,6 +958,15 @@ class CopyDocumentAsHTMLSettingsTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		new Setting(containerEl)
+			.setName('Render checkboxes as emojis')
+			.setDesc("If checked, checkboxes are rendered as emojis.")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.formatCheckboxesWithEmojis)
+				.onChange(async (value) => {
+					this.plugin.settings.formatCheckboxesWithEmojis = value;
+					await this.plugin.saveSettings();
+				}))
 
 		containerEl.createEl('h3', {text: 'Rendering'});
 
@@ -1194,6 +1216,9 @@ type CopyDocumentAsHTMLSettings = {
 	 * Don't replace image links with data: uris. No idea why you would want this, but here you go.
 	 */
 	disableImageEmbedding: boolean;
+
+	/** Render checkboxes as emojis */
+	formatCheckboxesWithEmojis: boolean;
 }
 
 const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
@@ -1212,6 +1237,7 @@ const DEFAULT_SETTINGS: CopyDocumentAsHTMLSettings = {
 	bareHtmlOnly: false,
 	fileNameAsHeader: false,
 	disableImageEmbedding: false,
+	formatCheckboxesWithEmojis: false,
 }
 
 export default class CopyDocumentAsHTMLPlugin extends Plugin {
